@@ -1,0 +1,58 @@
+app-id: net.buwryy.Roseline
+runtime: org.gnome.Platform
+runtime-version: '51'
+sdk: org.gnome.Sdk
+sdk-extensions:
+  - org.freedesktop.Sdk.Extension.rust-stable
+command: roseline
+
+finish-args:
+  - --share=ipc
+  - --share=network
+  - --socket=wayland
+  - --socket=fallback-x11
+  - --device=dri
+  - --socket=pulseaudio
+  # lets the host's ~/.config/gtk-4.0/gtk.css apply inside the sandbox.
+  - --filesystem=xdg-config/gtk-4.0:ro
+  # the discord bridges put their ipc sockets in the runtime dir
+  - --filesystem=xdg-run/discord-ipc-0
+  - --filesystem=xdg-run/discord-ipc-1
+  - --filesystem=xdg-run/discord-ipc-2
+  - --filesystem=xdg-run/discord-ipc-3
+  - --filesystem=xdg-run/discord-ipc-4
+  - --filesystem=xdg-run/discord-ipc-5
+  - --filesystem=xdg-run/discord-ipc-6
+  - --filesystem=xdg-run/discord-ipc-7
+  - --filesystem=xdg-run/discord-ipc-8
+  - --filesystem=xdg-run/discord-ipc-9
+  - --filesystem=xdg-run/vesktop
+  - --filesystem=xdg-run/snap.discord
+  - --filesystem=xdg-run/app/com.discordapp.Discord
+  - --filesystem=xdg-run/discord
+
+build-options:
+  append-path: /usr/lib/sdk/rust-stable/bin
+  env:
+    CARGO_HOME: /run/build/roseline/cargo
+
+modules:
+  - name: roseline
+    buildsystem: simple
+    build-commands:
+      - cargo --offline build --release --locked
+      - install -Dm755 target/release/roseline /app/bin/roseline
+      - strip --strip-unneeded /app/bin/roseline
+      - install -Dm644 data/net.buwryy.Roseline.desktop /app/share/applications/net.buwryy.Roseline.desktop
+      - install -Dm644 data/net.buwryy.Roseline.Settings.desktop /app/share/applications/net.buwryy.Roseline.Settings.desktop
+      - install -Dm644 data/net.buwryy.Roseline.metainfo.xml /app/share/metainfo/net.buwryy.Roseline.metainfo.xml
+      - install -Dm644 data/icons/hicolor/scalable/apps/net.buwryy.Roseline.svg /app/share/icons/hicolor/scalable/apps/net.buwryy.Roseline.svg
+      - install -Dm644 data/icons/hicolor/128x128/apps/net.buwryy.Roseline.png /app/share/icons/hicolor/128x128/apps/net.buwryy.Roseline.png
+    sources:
+      - type: dir
+        path: ..
+        skip:
+          - target
+          - build
+          - .git
+      - cargo-sources.json

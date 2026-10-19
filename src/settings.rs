@@ -1,0 +1,209 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+
+//! user preferences, stored as TOML so source builds need no schema install.
+
+use std::collections::BTreeMap;
+
+use serde::{Deserialize, Serialize};
+
+use crate::config::Paths;
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(default)]
+pub struct Settings {
+    pub graphics: Graphics,
+    pub prefix: Prefix,
+    /// pinned runner id; the newest installed when unset.
+    pub runner: Option<String>,
+    /// flag selections by name; only allowlisted presets are used.
+    pub flags: BTreeMap<String, String>,
+    pub discord: Discord,
+    pub environment: Environment,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(default)]
+pub struct Graphics {
+    pub backend: Backend,
+    /// PCI slot to render on; `None` is automatic.
+    pub device: Option<String>,
+}
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum Backend {
+    /// pick at launch: Vulkan when the host offers it, OpenGL otherwise.
+    #[default]
+    Auto,
+    /// Metal through Vulkan, the fast path.
+    Vulkan,
+    /// no Metal at all: hide every Vulkan driver, use Rosemary's OpenGL.
+    #[serde(rename = "opengl")]
+    OpenGL,
+}
+
+impl Backend {
+    pub const ALL: [Backend; 3] = [Backend::Auto, Backend::Vulkan, Backend::OpenGL];
+
+    pub fn label(self) -> &'static str {
+        match self {
+            Backend::Auto => "Auto",
+            Backend::Vulkan => "Vulkan",
+            Backend::OpenGL => "OpenGL",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(default)]
+pub struct Prefix {
+    pub system_files: SystemFiles,
+}
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum SystemFiles {
+    /// restore overwrites at the next launch.
+    #[default]
+    Repair,
+    /// allow the overwrite and report it.
+    Warn,
+    /// refuse writes with EROFS.
+    Immutable,
+}
+
+impl SystemFiles {
+    pub const ALL: [SystemFiles; 3] = [
+        SystemFiles::Repair,
+        SystemFiles::Warn,
+        SystemFiles::Immutable,
+    ];
+
+    pub fn value(self) -> &'static str {
+        match self {
+            SystemFiles::Repair => "repair",
+            SystemFiles::Warn => "warn",
+            SystemFiles::Immutable => "immutable",
+        }
+    }
+
+    pub fn label(self) -> &'static str {
+        match self {
+            SystemFiles::Repair => "Recover on launch",
+            SystemFiles::Warn => "Warn only",
+            SystemFiles::Immutable => "Read-only",
+        }
+    }
+
+    pub fn description(self) -> &'static str {
+        match self {
+            SystemFiles::Repair => "Overwrites are restored at the next start.",
+            SystemFiles::Warn => "Overwrites are allowed, and reported.",
+            SystemFiles::Immutable => "Writes to the base get EROFS.",
+        }
+    }
+
+    pub fn icon(self) -> &'static str {
+        match self {
+            SystemFiles::Repair => "changes-allow-symbolic",
+            SystemFiles::Warn => "dialog-warning-symbolic",
+            SystemFiles::Immutable => "changes-prevent-symbolic",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(default)]
+pub struct Environment {
+    /// lines for the Mac programs, as `ROSEMARY_ENVIRON` takes them.
+    pub guest: Vec<String>,
+    /// `NAME=VALUE` lines for Rosemary; a bare `NAME` copies this computer's value.
+    pub runner: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(default)]
+pub struct Discord {
+    pub enabled: bool,
+    /// Discord application id; Rich Presence stays off while empty.
+    pub app_id: String,
+    /// a Join Game button that opens the server the user is on.
+    pub join_button: bool,
+    pub details: String,
+    pub state: String,
+}
+
+/// shipped application id, replaceable and working out of the box.
+pub const DEFAULT_APP_ID: &str = "1561415907023265872";
+
+impl Default for Discord {
+    fn default() -> Discord {
+        Discord {
+            enabled: true,
+            app_id: DEFAULT_APP_ID.to_string(),
+            join_button: true,
+            details: "Roblox".into(),
+            state: "via Roséline".into(),
+        }
+    }
+}
+
+impl Settings {
+    pub fn load() -> Settings {
+        let mut settings: Settings = std::fs::read_to_string(Paths::get().settings_file())
+            .ok()
+            .and_then(|text| toml::from_str(&text).ok())
+            .unwrap_or_default();
+        // an empty id from an older version takes the shipped default.
+        if settings.discord.app_id.trim().is_empty() {
+            settings.discord.app_id = DEFAULT_APP_ID.to_string();
+            let _ = settings.save();
+        }
+        settings
+    }
+
+    pub fn save(&self) -> anyhow::Result<()> {
+        let path = Paths::get().settings_file();
+        crate::util::write_atomic(&path, toml::to_string_pretty(self)?.as_bytes())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn missing_keys_take_defaults() {
+        let settings: Settings = toml::from_str("graphics = {}").unwrap();
+        assert_eq!(settings.graphics.backend, Backend::Auto);
+        assert!(settings.graphics.device.is_none());
+        assert_eq!(settings.prefix.system_files, SystemFiles::Repair);
+        assert!(settings.runner.is_none());
+        assert!(settings.discord.enabled);
+        assert!(settings.discord.join_button);
+        assert!(settings.flags.is_empty());
+        assert!(settings.environment.guest.is_empty());
+        assert!(settings.environment.runner.is_empty());
+    }
+
+    #[test]
+    fn discord_ships_with_a_working_app_id() {
+        assert_eq!(Discord::default().app_id, DEFAULT_APP_ID);
+        assert!(!DEFAULT_APP_ID.trim().is_empty());
+    }
+
+    #[test]
+    fn backend_round_trips() {
+        let settings: Settings = toml::from_str("graphics = { backend = \"opengl\" }").unwrap();
+        assert_eq!(settings.graphics.backend, Backend::OpenGL);
+        let text = toml::to_string(&Settings::default()).unwrap();
+        assert!(text.contains("backend = \"auto\""));
+    }
+
+    #[test]
+    fn system_files_names_are_the_rosemary_cli_words() {
+        assert_eq!(SystemFiles::Repair.value(), "repair");
+        assert_eq!(SystemFiles::Warn.value(), "warn");
+        assert_eq!(SystemFiles::Immutable.value(), "immutable");
+    }
+}

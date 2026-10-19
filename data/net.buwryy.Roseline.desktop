@@ -1,0 +1,17 @@
+[Desktop Entry]
+Type=Application
+Name=Roséline
+Comment=Run Roblox's macOS client with Rosemary
+Exec=roseline %U
+Icon=net.buwryy.Roseline
+Terminal=false
+StartupNotify=true
+Categories=Game;
+Keywords=Roblox;Rosemary;macOS;
+StartupWMClass=net.buwryy.Roseline
+MimeType=x-scheme-handler/roblox;x-scheme-handler/roblox-player;
+Actions=settings;
+
+[Desktop Action settings]
+Name=Settings
+Exec=roseline --settings

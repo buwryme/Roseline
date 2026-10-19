@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<gresources>
+  <!-- Only the app logo travels in the binary. Widget icons come from the
+       desktop's own icon theme; see src/icons.rs. -->
+  <gresource prefix="/net/buwryy/Roseline/icons">
+    <file>scalable/apps/net.buwryy.Roseline.svg</file>
+  </gresource>
+</gresources>

@@ -1,0 +1,27 @@
+[package]
+name = "roseline"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.88"
+description = "Run Roblox with Rosemary on Linux"
+license = "GPL-3.0-or-later"
+repository = "https://github.com/buwryme/Roseline"
+
+[dependencies]
+adw = { package = "libadwaita", version = "0.9", features = ["v1_5"] }
+gtk = { package = "gtk4", version = "0.11", features = ["v4_12"] }
+anyhow = "1"
+async-channel = "2"
+serde = { version = "1", features = ["derive"] }
+toml = "1"
+flate2 = "1.1.10"
+zstd = "0.14.3"
+tar = "0.4.46"
+sha2 = "0.11.1"
+serde_json = "1.0.154"
+ureq = { version = "3", default-features = false, features = ["rustls", "platform-verifier", "gzip"] }
+zip = "9.0.5"
+libc = "0.2.191"
+
+[profile.release]
+lto = "thin"

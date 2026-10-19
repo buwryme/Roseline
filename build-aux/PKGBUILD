@@ -1,0 +1,26 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+
+pkgname=roseline
+pkgver=0.1.0
+pkgrel=1
+pkgdesc="Run Roblox with Rosemary on Linux"
+arch=('x86_64')
+url="https://github.com/buwryme/Roseline"
+license=('GPL-3.0-or-later')
+depends=('gtk4' 'libadwaita')
+makedepends=('cargo' 'glib2')
+# makepkg's C LTO turns ring's native archives into objects this link cannot
+# resolve; opt the C side out, the Rust side keeps thin LTO from Cargo.toml
+options=('!lto')
+source=("$pkgname-$pkgver.tar.gz")
+sha256sums=('SKIP')
+
+build() {
+  cd "$pkgname-$pkgver"
+  cargo build --release --locked
+}
+
+package() {
+  cd "$pkgname-$pkgver"
+  make install DESTDIR="$pkgdir" PREFIX=/usr
+}

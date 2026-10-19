@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+  <id>net.buwryy.Roseline</id>
+  <name>Roséline</name>
+  <summary>Run Roblox with Rosemary</summary>
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>GPL-3.0-or-later</project_license>
+  <description>
+    <p>
+      Roséline runs the macOS Roblox client on Linux through Rosemary's
+      compatibility layer, and keeps the moving parts in order: the client
+      updates itself from Roblox's own version endpoint, content overlays
+      for cursors, fonts, skyboxes and sounds survive updates, and the
+      Rosemary runner and its Darwin base are managed in one place.
+    </p>
+  </description>
+  <launchable type="desktop-id">net.buwryy.Roseline.desktop</launchable>
+  <url type="homepage">https://github.com/buwryme/Roseline</url>
+  <developer id="net.buwryy">
+    <name>buwryme</name>
+  </developer>
+  <content_rating type="oars-1.1"/>
+  <releases>
+    <release version="0.1.0" date="2026-10-18"/>
+  </releases>
+</component>

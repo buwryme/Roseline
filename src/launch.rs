@@ -1,0 +1,384 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+
+//! the launch pipeline: everything between a click and a running client.
+//!
+//! the environment is pinned in `docs/architecture.md`; protocol arguments
+//! mirror Butter's `shortcuts.rs` (GPL-3.0-or-later, the Microlift
+//! contributors).
+
+use std::path::{Path, PathBuf};
+use std::process::{Child, Command, Stdio};
+
+use anyhow::{Context, Result, bail};
+
+use crate::config::Paths;
+use crate::gpu;
+use crate::progress::Progress;
+use crate::settings::{Backend, Settings};
+
+use gtk::glib;
+
+/// the pid of a running guest: the pid file plus a live Rosemary process.
+pub fn running_pid() -> Option<u32> {
+    let text = std::fs::read_to_string(Paths::get().game_pid()).ok()?;
+    let pid: u32 = text.trim().parse().ok()?;
+    let cmdline = std::fs::read(format!("/proc/{pid}/cmdline")).ok()?;
+    let cmdline = String::from_utf8_lossy(&cmdline);
+    cmdline.contains("rosemary").then_some(pid)
+}
+
+/// bring everything to order, then start the client and return the guest.
+pub fn run(progress: &Progress, uri: Option<&str>) -> Result<Child> {
+    let paths = Paths::get();
+    let mut settings = Settings::load();
+
+    let runner_id = crate::runner::ensure(progress)?;
+    // first run: record what was installed, so the picker never guesses
+    if settings.runner.is_none() {
+        settings.runner = Some(runner_id);
+        let _ = settings.save();
+    }
+    ensure_prefix(progress, &settings)?;
+    crate::roblox::ensure(progress)?;
+    crate::roblox::brand()?;
+    crate::overlay::apply(progress)?;
+    crate::flags::write(&settings)?;
+
+    progress.stage("Starting Roblox");
+    let (_, binary) = paths
+        .runner_selected(settings.runner.as_deref())
+        .context("the Rosemary runner disappeared mid-launch")?;
+    let runner_dir = binary
+        .parent()
+        .and_then(Path::parent)
+        .context("the Rosemary runner has no directory")?;
+    crate::runner::refresh_launcher(runner_dir)?;
+    std::fs::create_dir_all(paths.logs())?;
+    let started = now();
+    let log = std::fs::File::create(paths.logs().join(format!("launch-{started}.log")))?;
+    let error_log = log.try_clone()?;
+
+    let mut command = Command::new(binary);
+    command
+        .arg("run")
+        .arg(paths.app_bundle())
+        .args(guest_arguments(uri, &paths.prefix()))
+        .envs(environment(&settings))
+        .current_dir(paths.app())
+        .stdin(Stdio::null())
+        .stdout(Stdio::from(log))
+        .stderr(Stdio::from(error_log));
+    // its own group, so a signal for Roseline never hits the game.
+    std::os::unix::process::CommandExt::process_group(&mut command, 0);
+
+    let child = command
+        .spawn()
+        .with_context(|| "could not start Rosemary")?;
+    crate::util::write_atomic(&paths.game_pid(), child.id().to_string().as_bytes())?;
+    Ok(child)
+}
+
+/// take a wedged guest out without asking.
+pub fn force_kill(pid: u32) {
+    // SAFETY: a plain signal to a pid this process spawned.
+    unsafe {
+        libc::kill(pid as i32, libc::SIGKILL);
+    }
+}
+
+/// the presence while nothing is joined: Roblox icon, no small image.
+pub fn idle_activity(settings: &Settings) -> crate::rpc::Activity {
+    crate::rpc::Activity {
+        details: settings.discord.details.clone(),
+        state: settings.discord.state.clone(),
+        started: now(),
+        large_image: Some(crate::rpc::ROBLOX_LOGO.to_string()),
+        small_image: None,
+        join_url: None,
+    }
+}
+
+pub fn now() -> u64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|elapsed| elapsed.as_secs())
+        .unwrap_or(0)
+}
+
+fn ensure_prefix(progress: &Progress, settings: &Settings) -> Result<()> {
+    let paths = Paths::get();
+    if paths.prefix().join("root").is_dir() {
+        return Ok(());
+    }
+    progress.stage("Creating the prefix and downloading the Darwin base");
+    let mut command = crate::rosemary::create_command(settings)?;
+    let log = paths.logs().join("prefix-create.log");
+    let status = crate::util::run_logged(&mut command, &log)?;
+    if !status.success() {
+        bail!("the prefix could not be created; see {}", log.display());
+    }
+    Ok(())
+}
+
+fn resolved_backend(settings: &Settings) -> Backend {
+    match settings.graphics.backend {
+        Backend::Auto if gpu::vulkan_available() => Backend::Vulkan,
+        Backend::Auto => Backend::OpenGL,
+        backend => backend,
+    }
+}
+
+/// Rosemary's environment for the current settings.
+pub fn environment(settings: &Settings) -> Vec<(String, String)> {
+    let mut environment = vec![
+        (
+            "ROSEMARY_PREFIX".to_string(),
+            Paths::get().prefix().display().to_string(),
+        ),
+        ("ROSEMARY_DECORATIONS".to_string(), "server".to_string()),
+        ("ROSEMARY_MENU".to_string(), "none".to_string()),
+        ("ROSEMARY_PREFIX_HOME".to_string(), "prefix".to_string()),
+        ("ROSEMARY_PREFIX_SETUP".to_string(), "download".to_string()),
+    ];
+
+    let metal = resolved_backend(settings) == Backend::Vulkan;
+    if !metal {
+        // hiding every Vulkan driver is Butter's "disable Metal": the guest
+        // falls back to OpenGL.
+        environment.push(("VK_DRIVER_FILES".to_string(), "/dev/null".to_string()));
+    }
+    let cards = gpu::list();
+    let device = cards
+        .iter()
+        .find(|card| settings.graphics.device.as_deref() == Some(card.slot.as_str()));
+    if metal {
+        if let Some(card) = device {
+            for (key, value) in card.vulkan_env() {
+                environment.push((key.to_string(), value));
+            }
+        }
+    }
+    if let Some(card) = device {
+        for (key, value) in card.opengl_env() {
+            environment.push((key.to_string(), value));
+        }
+    }
+
+    // the Mac programs' variables and Rosemary's go last, so user lines win.
+    if !settings.environment.guest.is_empty() {
+        environment.push((
+            "ROSEMARY_ENVIRON".to_string(),
+            settings.environment.guest.join("\n"),
+        ));
+    }
+    for line in &settings.environment.runner {
+        match line.split_once('=') {
+            Some((name, value)) if valid_env_name(name) => {
+                environment.push((name.to_string(), value.to_string()));
+            }
+            None if valid_env_name(line) => {
+                if let Ok(value) = std::env::var(line) {
+                    environment.push((line.clone(), value));
+                }
+            }
+            _ => {}
+        }
+    }
+    environment
+}
+
+/// a usable environment variable name.
+pub fn valid_env_name(name: &str) -> bool {
+    let mut characters = name.chars();
+    match characters.next() {
+        Some(first) if first.is_ascii_alphabetic() || first == '_' => {}
+        _ => return false,
+    }
+    characters.all(|character| character.is_ascii_alphanumeric() || character == '_')
+}
+
+/// whether a raw line is `NAME=VALUE` or a bare `NAME`.
+pub fn valid_env_line(line: &str) -> bool {
+    match line.split_once('=') {
+        Some((name, _)) => valid_env_name(name),
+        None => valid_env_name(line),
+    }
+}
+
+/// what the guest is opened with; the link goes under every name a Mac app
+/// might read from NSUserDefaults.
+pub fn guest_arguments(uri: Option<&str>, prefix: &Path) -> Vec<String> {
+    let Some(uri) = uri else {
+        return Vec::new();
+    };
+    let link = guest_url(uri, prefix);
+    let mut arguments = Vec::new();
+    for flag in ["-protocolString", "-protocolUrl", "-protocolUri"] {
+        arguments.push(flag.to_string());
+        arguments.push(link.clone());
+    }
+    arguments.push(link.clone());
+    // the experience and the server, spelled out beside the canonical link.
+    let ids = parse_launch(&link);
+    if let Some(place_id) = ids.place_id {
+        arguments.push("-placeId".to_string());
+        arguments.push(place_id.to_string());
+    }
+    if let Some(job_id) = ids.job_id {
+        arguments.push("-gameInstanceId".to_string());
+        arguments.push(job_id);
+    }
+    arguments
+}
+
+/// what a launch URL names: experience and, when present, server.
+#[derive(Debug, PartialEq)]
+struct LaunchIds {
+    place_id: Option<u64>,
+    job_id: Option<String>,
+}
+
+/// ids a `roblox-player:` or `roblox://` link carries; browsers
+/// percent-encode, so both spellings are read.
+fn parse_launch(uri: &str) -> LaunchIds {
+    let place_id = value_after(uri, "placeId").and_then(|rest| {
+        let digits: String = rest.chars().take_while(char::is_ascii_digit).collect();
+        digits.parse().ok()
+    });
+    let job_id = ["gameInstanceId", "gameId"]
+        .iter()
+        .find_map(|key| value_after(uri, key).and_then(uuid_at))
+        .or_else(|| uri.split("gameinfo:").nth(1).and_then(uuid_at));
+    LaunchIds { place_id, job_id }
+}
+
+/// text after `key=`, tolerating the percent-encoded `%3D`.
+fn value_after<'a>(haystack: &'a str, key: &str) -> Option<&'a str> {
+    let start = haystack.find(key)? + key.len();
+    let rest = &haystack[start..];
+    rest.strip_prefix('=')
+        .or_else(|| rest.strip_prefix("%3D"))
+        .or_else(|| rest.strip_prefix("%3d"))
+}
+
+/// a UUID at the very start of `text`.
+fn uuid_at(text: &str) -> Option<String> {
+    let candidate: String = text
+        .chars()
+        .take_while(|c| c.is_ascii_hexdigit() || *c == '-')
+        .collect();
+    (candidate.len() == 36).then_some(candidate)
+}
+
+/// a link stays as it is; a file becomes a `file:` URL on the guest's drive
+/// or host mount.
+pub fn guest_url(arg: &str, prefix: &Path) -> String {
+    let path: Option<PathBuf> = if arg.starts_with('/') {
+        Some(PathBuf::from(arg))
+    } else if arg
+        .get(..5)
+        .is_some_and(|start| start.eq_ignore_ascii_case("file:"))
+    {
+        glib::filename_from_uri(arg).ok().map(|(path, _)| path)
+    } else {
+        None
+    };
+    let Some(path) = path else {
+        return arg.to_string();
+    };
+    let drive = prefix.join("root");
+    let guest = match path.strip_prefix(&drive) {
+        Ok(rest) => Path::new("/").join(rest),
+        Err(_) => Path::new("/Volumes/Host").join(path.strip_prefix("/").unwrap_or(&path)),
+    };
+    glib::filename_to_uri(&guest, None::<&str>)
+        .map(|uri| uri.to_string())
+        .unwrap_or_else(|_| arg.to_string())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn links_keep_their_spelling() {
+        let prefix = Path::new("/tmp/roseline-prefix");
+        let link = "roblox-player:1+launchmode:play+gameinfo:abc";
+        let arguments = guest_arguments(Some(link), prefix);
+        assert_eq!(arguments.len(), 7);
+        assert_eq!(arguments[0], "-protocolString");
+        assert_eq!(arguments[1], link);
+        assert_eq!(arguments[2], "-protocolUrl");
+        assert_eq!(arguments[4], "-protocolUri");
+        assert_eq!(arguments[6], link);
+    }
+
+    #[test]
+    fn launch_ids_come_from_the_link() {
+        let ids = parse_launch(
+            "https://www.roblox.com/games/start?placeId=4483381587&gameInstanceId=e42cc7b0-9b0a-4b7e-8f35-1c2d3e4f5a6b",
+        );
+        assert_eq!(ids.place_id, Some(4483381587));
+        assert_eq!(
+            ids.job_id.as_deref(),
+            Some("e42cc7b0-9b0a-4b7e-8f35-1c2d3e4f5a6b")
+        );
+    }
+
+    #[test]
+    fn launch_ids_survive_percent_encoding() {
+        let link = "roblox-player:1+launchmode:play+gameinfo:e42cc7b0-9b0a-4b7e-8f35-1c2d3e4f5a6b+launchtime:1+placelauncherurl:https%3A%2F%2Fassetgame.roblox.com%2Fgame%2FPlaceLauncher.ashx%3Frequest%3DRequestGame%26placeId%3D123%26gameId%3De42cc7b0-9b0a-4b7e-8f35-1c2d3e4f5a6b";
+        let ids = parse_launch(link);
+        assert_eq!(ids.place_id, Some(123));
+        assert_eq!(
+            ids.job_id.as_deref(),
+            Some("e42cc7b0-9b0a-4b7e-8f35-1c2d3e4f5a6b")
+        );
+    }
+
+    #[test]
+    fn guest_arguments_carry_the_ids() {
+        let prefix = Path::new("/tmp/p");
+        let arguments = guest_arguments(
+            Some(
+                "https://www.roblox.com/games/start?placeId=99&gameInstanceId=e42cc7b0-9b0a-4b7e-8f35-1c2d3e4f5a6b",
+            ),
+            prefix,
+        );
+        assert!(
+            arguments
+                .windows(2)
+                .any(|pair| pair[0] == "-placeId" && pair[1] == "99")
+        );
+        assert!(arguments.windows(2).any(|pair| pair[0] == "-gameInstanceId"
+            && pair[1] == "e42cc7b0-9b0a-4b7e-8f35-1c2d3e4f5a6b"));
+    }
+
+    #[test]
+    fn environment_lines_validate() {
+        assert!(valid_env_line("ENABLE_SOMETHING=1"));
+        assert!(valid_env_line("DISPLAY"));
+        assert!(!valid_env_line("1BAD=x"));
+        assert!(!valid_env_line("WITH SPACE=1"));
+        assert!(!valid_env_line(""));
+        assert!(!valid_env_line("=nothing"));
+    }
+
+    #[test]
+    fn no_link_no_arguments() {
+        assert!(guest_arguments(None, Path::new("/tmp/p")).is_empty());
+    }
+
+    #[test]
+    fn files_map_through_the_host_mount_and_the_drive() {
+        let prefix = Path::new("/data/bottle/prefix");
+        assert_eq!(
+            guest_url("/home/miles/x.txt", prefix),
+            "file:///Volumes/Host/home/miles/x.txt"
+        );
+        assert_eq!(
+            guest_url("/data/bottle/prefix/root/Users/x/f.txt", prefix),
+            "file:///Users/x/f.txt"
+        );
+    }
+}
