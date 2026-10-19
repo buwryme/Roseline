@@ -125,6 +125,7 @@ the manager. The runner and the MiniDarwin base stick close to
   Roblox can use. Everything else (including login) works.
 - x86_64 only
 - the Metal2Vulkan path might introduce more performance overhead than OpenGL, but notably provides better graphics
+- voice chat doesn't work: you can hear everyone else, but microphone input doesn't work. Rosemary-side issue.
 
 ## credits
 
