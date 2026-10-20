@@ -133,7 +133,7 @@ the manager. The runner and the MiniDarwin base stick close to
 ## credits
 
 Rosemary and Butter, the compatibility layer and its manager, are by the
-Microlift contributors. Roséline can run only thanks to them.
+Microlift contributors. Roséline can run only thanks to them. contributions to this project of any kind are welcome.
 
 Licensed GPL-3.0-or-later. additional terms: keep the credit, never
 present a fork as the original, absolutely no warranty. See [NOTICE](NOTICE) and
