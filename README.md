@@ -127,6 +127,10 @@ the manager. The runner and the MiniDarwin base stick close to
 - the Metal2Vulkan path might introduce more performance overhead than OpenGL, but notably provides better graphics
 - voice chat doesn't work: you can hear everyone else, but microphone input doesn't work. Rosemary-side issue.
 
+## please note:
+
+- no modifications (whether it be exploits or such) to the client are done at all; only texture overrides that are optional.
+
 ## credits
 
 Rosemary and Butter, the compatibility layer and its manager, are by the
