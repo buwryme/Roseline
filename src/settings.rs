@@ -136,6 +136,10 @@ pub struct Discord {
 /// shipped application id, replaceable and working out of the box.
 pub const DEFAULT_APP_ID: &str = "1561415907023265872";
 
+/// every config file starts with this; the serializer cannot carry comments.
+const HEADER: &str =
+    "# EDIT CAREFULLY! config corruption may cause Roseline to fail during launch.\n\n";
+
 impl Default for Discord {
     fn default() -> Discord {
         Discord {
@@ -150,7 +154,9 @@ impl Default for Discord {
 
 impl Settings {
     pub fn load() -> Settings {
-        let mut settings: Settings = std::fs::read_to_string(Paths::get().settings_file())
+        let path = Paths::get().settings_file();
+        let existed = path.is_file();
+        let mut settings: Settings = std::fs::read_to_string(&path)
             .ok()
             .and_then(|text| toml::from_str(&text).ok())
             .unwrap_or_default();
@@ -158,13 +164,22 @@ impl Settings {
         if settings.discord.app_id.trim().is_empty() {
             settings.discord.app_id = DEFAULT_APP_ID.to_string();
             let _ = settings.save();
+        } else if !existed {
+            // seed the editable template on first launch.
+            let _ = settings.save();
         }
         settings
     }
 
     pub fn save(&self) -> anyhow::Result<()> {
         let path = Paths::get().settings_file();
-        crate::util::write_atomic(&path, toml::to_string_pretty(self)?.as_bytes())
+        crate::util::write_atomic(&path, self.render()?.as_bytes())
+    }
+
+    fn render(&self) -> anyhow::Result<String> {
+        let mut text = String::from(HEADER);
+        text.push_str(&toml::to_string_pretty(self)?);
+        Ok(text)
     }
 }
 
@@ -190,6 +205,16 @@ mod tests {
     fn discord_ships_with_a_working_app_id() {
         assert_eq!(Discord::default().app_id, DEFAULT_APP_ID);
         assert!(!DEFAULT_APP_ID.trim().is_empty());
+    }
+
+    #[test]
+    fn config_template_warns_at_the_top() {
+        let text = Settings::default().render().unwrap();
+        assert!(text.starts_with(
+            "# EDIT CAREFULLY! config corruption may cause Roseline to fail during launch.\n\n"
+        ));
+        let parsed: Settings = toml::from_str(&text).unwrap();
+        assert_eq!(parsed.discord.app_id, DEFAULT_APP_ID);
     }
 
     #[test]

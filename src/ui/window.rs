@@ -115,7 +115,7 @@ fn push_settings(nav: &adw::NavigationView, kind: &str) {
         "content" => (content_page::build().upcast(), "Content"),
         "fflags" => (flags_page::build().upcast(), "FFlags"),
         "extras" => (extras_page::build().upcast(), "Extras"),
-        "runner" => (runner_page::build().upcast(), "Advanced"),
+        "runner" => (runner_page::build(), "Advanced"),
         _ => return,
     };
     let header = adw::HeaderBar::builder()

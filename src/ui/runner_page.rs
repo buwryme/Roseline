@@ -21,7 +21,7 @@ struct Entry {
     id: Option<String>,
 }
 
-pub fn build() -> adw::PreferencesPage {
+pub fn build() -> gtk::Widget {
     let page = adw::PreferencesPage::new();
     let paths = Paths::get();
     let settings = Rc::new(RefCell::new(Settings::load()));
@@ -283,7 +283,41 @@ pub fn build() -> adw::PreferencesPage {
         |settings| &mut settings.environment.runner,
     ));
 
-    page
+    let open_config = gtk::Button::builder()
+        .label("Open Config File")
+        .halign(gtk::Align::Center)
+        .css_classes(["suggested-action", "pill"])
+        .build();
+    open_config.connect_clicked(|button| {
+        let path = Paths::get().settings_file();
+        if !path.exists() {
+            // first launch seeds the template; the button still opens it.
+            let _ = Settings::load();
+        }
+        let launcher = gtk::FileLauncher::new(Some(&gtk::gio::File::for_path(&path)));
+        let window = button.root().and_downcast::<adw::ApplicationWindow>();
+        launcher.launch(window.as_ref(), gtk::gio::Cancellable::NONE, |result| {
+            if let Err(error) = result {
+                eprintln!("roseline: could not open the config file: {error}");
+            }
+        });
+    });
+
+    let footer = gtk::Box::builder()
+        .orientation(gtk::Orientation::Vertical)
+        .halign(gtk::Align::Center)
+        .margin_top(12)
+        .margin_bottom(18)
+        .margin_start(24)
+        .margin_end(24)
+        .build();
+    footer.append(&open_config);
+
+    page.set_vexpand(true);
+    let root = gtk::Box::new(gtk::Orientation::Vertical, 0);
+    root.append(&page);
+    root.append(&footer);
+    root.upcast()
 }
 
 fn run_action(button: &gtk::Button, action: &'static str, title: &'static str) {
