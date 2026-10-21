@@ -12,7 +12,7 @@ on:
         required: true
         type: string
       reuse_run:
-        description: "Optional previous run ID; its artifacts are added to the release. Turn off the builds you want to reuse."
+        description: "Optional previous run IDs, comma-separated; their artifacts are added to the release. Disable the builds you want to reuse."
         required: false
         type: string
         default: ""
@@ -99,9 +99,15 @@ jobs:
             exit 1
           fi
           tag="v$version"
-          if [ -n "${REUSE_RUN:-}" ] && [[ ! "$REUSE_RUN" =~ ^[0-9]+$ ]]; then
-            echo "::error::reuse_run must be a numeric run id"
-            exit 1
+          if [ -n "${REUSE_RUN:-}" ]; then
+            IFS=',' read -ra reuse_runs <<< "$REUSE_RUN"
+            for run in "${reuse_runs[@]}"; do
+              run="$(echo "$run" | xargs)"
+              if [[ ! "$run" =~ ^[0-9]+$ ]]; then
+                echo "::error::reuse_run must be numeric run ids separated by commas"
+                exit 1
+              fi
+            done
           fi
 
           cargo_version="$(sed -n 's/^version = "\(.*\)"/\1/p' Cargo.toml | head -1)"
@@ -133,8 +139,8 @@ jobs:
               selected=1
             fi
           done
-          if [ "$selected" -ne 1 ]; then
-            echo "::error::select at least one build"
+          if [ "$selected" -ne 1 ] && [ -z "${REUSE_RUN:-}" ]; then
+            echo "::error::select at least one build, or set reuse_run"
             exit 1
           fi
 
@@ -375,17 +381,30 @@ jobs:
           ref: ${{ inputs.commit }}
           fetch-depth: 0
       - uses: actions/download-artifact@v8
+        if: ${{ inputs.build_arch || inputs.build_rpm || inputs.build_deb || inputs.build_flatpak || inputs.build_appimage || inputs.build_nix }}
         with:
           path: dist
           merge-multiple: true
-      - name: Reuse artifacts from an earlier run
+      - name: Reuse artifacts from earlier runs
         if: ${{ inputs.reuse_run != '' }}
-        uses: actions/download-artifact@v8
-        with:
-          path: dist
-          merge-multiple: true
-          run-id: ${{ inputs.reuse_run }}
-          github-token: ${{ github.token }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REUSE_RUN: ${{ inputs.reuse_run }}
+        run: |
+          set -euo pipefail
+          mkdir -p dist
+          IFS=',' read -ra runs <<< "$REUSE_RUN"
+          for run in "${runs[@]}"; do
+            run="$(echo "$run" | xargs)"
+            [ -n "$run" ] || continue
+            gh run download "$run" --repo "$GITHUB_REPOSITORY" --dir "reuse-$run"
+          done
+          for dir in reuse-*; do
+            [ -d "$dir" ] || continue
+            find "$dir" -type f -exec mv -f {} dist/ \;
+          done
+          rm -rf reuse-*
+          ls -lh dist
       - name: Check the selected artifacts
         env:
           VERSION: ${{ needs.validate.outputs.version }}
@@ -395,6 +414,7 @@ jobs:
           BUILD_FLATPAK: ${{ inputs.build_flatpak }}
           BUILD_APPIMAGE: ${{ inputs.build_appimage }}
           BUILD_NIX: ${{ inputs.build_nix }}
+          REUSE_RUN: ${{ inputs.reuse_run }}
         run: |
           set -euo pipefail
           ls -lh dist
@@ -406,13 +426,28 @@ jobs:
               exit 1
             }
           }
+          maybe_require() {
+            if [ "$1" = "true" ]; then
+              require "$2"
+            fi
+          }
 
-          [ "$BUILD_ARCH" = "true" ] && require "roseline-$VERSION-1-x86_64.pkg.tar.zst"
-          [ "$BUILD_RPM" = "true" ] && require "roseline-$VERSION-1.*.x86_64.rpm"
-          [ "$BUILD_DEB" = "true" ] && require "roseline_${VERSION}_amd64.deb"
-          [ "$BUILD_FLATPAK" = "true" ] && require "Roseline-$VERSION-x86_64.flatpak"
-          [ "$BUILD_APPIMAGE" = "true" ] && require "Roseline-$VERSION-x86_64.AppImage"
-          [ "$BUILD_NIX" = "true" ] && require "roseline-$VERSION-x86_64-nix.tar.xz"
+          maybe_require "$BUILD_ARCH" "roseline-$VERSION-1-x86_64.pkg.tar.zst"
+          maybe_require "$BUILD_RPM" "roseline-$VERSION-1.*.x86_64.rpm"
+          maybe_require "$BUILD_DEB" "roseline_${VERSION}_amd64.deb"
+          maybe_require "$BUILD_FLATPAK" "Roseline-$VERSION-x86_64.flatpak"
+          maybe_require "$BUILD_APPIMAGE" "Roseline-$VERSION-x86_64.AppImage"
+          maybe_require "$BUILD_NIX" "roseline-$VERSION-x86_64-nix.tar.xz"
+
+          if [ -n "${REUSE_RUN:-}" ]; then
+            echo "reused run ids: $REUSE_RUN"
+            require "roseline-$VERSION-1-x86_64.pkg.tar.zst"
+            require "roseline-$VERSION-1.*.x86_64.rpm"
+            require "roseline_${VERSION}_amd64.deb"
+            require "Roseline-$VERSION-x86_64.flatpak"
+            require "Roseline-$VERSION-x86_64.AppImage"
+            require "roseline-$VERSION-x86_64-nix.tar.xz"
+          fi
       - name: Create the GitHub release
         env:
           GH_TOKEN: ${{ github.token }}
