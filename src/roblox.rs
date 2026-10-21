@@ -28,7 +28,11 @@ pub fn latest() -> Result<ClientVersion> {
 
 /// the `version-…` the managed copy came from.
 pub fn installed_upload() -> Option<String> {
-    let text = std::fs::read_to_string(Paths::get().app_version()).ok()?;
+    installed_upload_at(&Paths::get().app_version())
+}
+
+pub(crate) fn installed_upload_at(version_file: &Path) -> Option<String> {
+    let text = std::fs::read_to_string(version_file).ok()?;
     let text = text.trim().to_string();
     (!text.is_empty()).then_some(text)
 }

@@ -6,6 +6,7 @@
 //! re-applies everything after a client update.
 
 use std::collections::BTreeMap;
+use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
 use std::time::UNIX_EPOCH;
 
@@ -32,12 +33,15 @@ struct Record {
 
 /// apply the overlay; returns how many files were written.
 pub fn apply(progress: &Progress) -> Result<usize> {
-    let paths = Paths::get();
+    apply_at(&Paths::get(), progress)
+}
+
+fn apply_at(paths: &Paths, progress: &Progress) -> Result<usize> {
     let overlay = paths.overlay();
     if !overlay.is_dir() {
         return Ok(0);
     }
-    let version = crate::roblox::installed_upload().unwrap_or_default();
+    let version = crate::roblox::installed_upload_at(&paths.app_version()).unwrap_or_default();
     let mut state: State = std::fs::read_to_string(paths.overlay_state())
         .ok()
         .and_then(|text| toml::from_str(&text).ok())
@@ -64,7 +68,10 @@ pub fn apply(progress: &Progress) -> Result<usize> {
         if let Some(stored) = state.files.get(relative) {
             if stored.src_size == source_meta.len() && stored.src_mtime == mtime(&source_meta) {
                 if let Ok(dst_meta) = std::fs::metadata(&destination) {
-                    if stored.dst_size == dst_meta.len() && stored.dst_mtime == mtime(&dst_meta) {
+                    if stored.dst_size == dst_meta.len()
+                        && stored.dst_mtime == mtime(&dst_meta)
+                        && dst_meta.permissions().mode() == source_meta.permissions().mode()
+                    {
                         continue;
                     }
                 }
@@ -284,5 +291,51 @@ mod tests {
                 .files
                 .contains_key("Contents/Resources/content/fonts/X.ttf")
         );
+    }
+
+    #[test]
+    fn apply_tracks_state_mtime_and_mode() {
+        let root = std::env::temp_dir().join(format!("roseline-apply-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        let paths = Paths {
+            data: root.clone(),
+            config: root.clone(),
+            cache: root.clone(),
+        };
+        let relative = "Contents/Resources/content/fonts/Test.ttf";
+        let destination = paths.app_bundle().join(relative);
+        std::fs::create_dir_all(destination.parent().unwrap()).unwrap();
+        std::fs::write(&destination, b"stock").unwrap();
+        std::fs::write(paths.app_version(), b"version-1").unwrap();
+        let source = paths.overlay().join(relative);
+        std::fs::create_dir_all(source.parent().unwrap()).unwrap();
+        std::fs::write(&source, b"overlay").unwrap();
+
+        let progress = Progress::silent();
+        assert_eq!(apply_at(&paths, &progress).unwrap(), 1);
+        assert_eq!(std::fs::read(&destination).unwrap(), b"overlay");
+        assert_eq!(apply_at(&paths, &progress).unwrap(), 0);
+
+        // permissions are part of the comparison, not just size and mtime.
+        std::fs::set_permissions(&source, std::fs::Permissions::from_mode(0o640)).unwrap();
+        assert_eq!(apply_at(&paths, &progress).unwrap(), 1);
+        assert_eq!(
+            std::fs::metadata(&destination)
+                .unwrap()
+                .permissions()
+                .mode()
+                & 0o777,
+            0o640
+        );
+
+        std::fs::write(&destination, b"damaged").unwrap();
+        assert_eq!(apply_at(&paths, &progress).unwrap(), 1);
+        assert_eq!(std::fs::read(&destination).unwrap(), b"overlay");
+
+        // a new client version drops the state and re-applies everything.
+        std::fs::write(paths.app_version(), b"version-2").unwrap();
+        assert_eq!(apply_at(&paths, &progress).unwrap(), 1);
+
+        let _ = std::fs::remove_dir_all(&root);
     }
 }
