@@ -11,6 +11,11 @@ on:
         description: "Version without the v (e.g. 0.1.0); notes go in docs/releases/<version>.md"
         required: true
         type: string
+      reuse_run:
+        description: "Optional previous run ID; its artifacts are added to the release. Turn off the builds you want to reuse."
+        required: false
+        type: string
+        default: ""
       build_arch:
         description: "Include Arch Linux build?"
         required: true
@@ -44,6 +49,7 @@ on:
 
 permissions:
   contents: read
+  actions: read
 
 concurrency:
   group: release-${{ inputs.version }}
@@ -68,6 +74,7 @@ jobs:
         env:
           COMMIT: ${{ inputs.commit }}
           RAW_VERSION: ${{ inputs.version }}
+          REUSE_RUN: ${{ inputs.reuse_run }}
           BUILD_ARCH: ${{ inputs.build_arch }}
           BUILD_RPM: ${{ inputs.build_rpm }}
           BUILD_DEB: ${{ inputs.build_deb }}
@@ -92,6 +99,10 @@ jobs:
             exit 1
           fi
           tag="v$version"
+          if [ -n "${REUSE_RUN:-}" ] && [[ ! "$REUSE_RUN" =~ ^[0-9]+$ ]]; then
+            echo "::error::reuse_run must be a numeric run id"
+            exit 1
+          fi
 
           cargo_version="$(sed -n 's/^version = "\(.*\)"/\1/p' Cargo.toml | head -1)"
           lock_version="$(grep -A1 '^name = "roseline"$' Cargo.lock | sed -n 's/^version = "\(.*\)"/\1/p' | head -1)"
@@ -145,6 +156,9 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 90
     container: archlinux:latest
+    defaults:
+      run:
+        shell: bash
     steps:
       - name: Install git for checkout
         run: pacman -Syu --noconfirm --needed git
@@ -178,6 +192,9 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 90
     container: fedora:latest
+    defaults:
+      run:
+        shell: bash
     steps:
       - name: Install git for checkout
         run: dnf install -y git
@@ -211,6 +228,9 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 90
     container: ubuntu:24.04
+    defaults:
+      run:
+        shell: bash
     steps:
       - name: Install git for checkout
         run: apt-get update && apt-get install -y git ca-certificates
@@ -240,6 +260,9 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 90
     container: ubuntu:24.04
+    defaults:
+      run:
+        shell: bash
     steps:
       - name: Install git for checkout
         run: apt-get update && apt-get install -y git ca-certificates
@@ -276,6 +299,9 @@ jobs:
         - /var/tmp
       env:
         TMPDIR: /var/tmp
+    defaults:
+      run:
+        shell: bash
     steps:
       - uses: actions/checkout@v7
         with:
@@ -342,6 +368,7 @@ jobs:
     timeout-minutes: 20
     permissions:
       contents: write
+      actions: read
     steps:
       - uses: actions/checkout@v7
         with:
@@ -351,6 +378,14 @@ jobs:
         with:
           path: dist
           merge-multiple: true
+      - name: Reuse artifacts from an earlier run
+        if: ${{ inputs.reuse_run != '' }}
+        uses: actions/download-artifact@v8
+        with:
+          path: dist
+          merge-multiple: true
+          run-id: ${{ inputs.reuse_run }}
+          github-token: ${{ github.token }}
       - name: Check the selected artifacts
         env:
           VERSION: ${{ needs.validate.outputs.version }}
