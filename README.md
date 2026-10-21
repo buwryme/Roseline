@@ -11,6 +11,9 @@
   <img src="https://img.shields.io/badge/license-GPL--3.0--or--later-6c7a57?style=flat-square" alt="license">
   <img src="https://img.shields.io/badge/GTK4-Libadwaita-7752cc?style=flat-square" alt="GTK4">
   <img src="https://img.shields.io/badge/Language-Rust-c1440e?style=flat-square" alt="Rust">
+  <a href="https://discord.gg/HrUrzXAxPV">
+    <img src="https://img.shields.io/badge/discord-server-5865f2?style=flat-square&logo=discord&logoColor=white" alt="discord server">
+  </a>
 </p>
 
 Roséline is a small GTK4/Libadwaita app written in Rust that runs the macOS Roblox clients via Rosemary. 
@@ -139,6 +142,6 @@ Licensed GPL-3.0-or-later. additional terms: keep the credit, never
 present a fork as the original, absolutely no warranty. See [NOTICE](NOTICE) and
 [LICENSE](LICENSE).
 
-<p align="center">made with ♡ by <a href="https://github.com/buwryme">buwryme</a></p>
+<p align="center">made with ♡ by <a href="https://github.com/buwryme">buwryme</a>. join the <a href="https://discord.gg/HrUrzXAxPV">discord server!</a></p>
 
 for inquiries, contact hello@buwryy.net
