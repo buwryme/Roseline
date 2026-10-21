@@ -1,0 +1,394 @@
+name: Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      commit:
+        description: "Full 40-character commit SHA to build and release"
+        required: true
+        type: string
+      version:
+        description: "Version without the v (e.g. 0.1.0); notes go in docs/releases/<version>.md"
+        required: true
+        type: string
+      build_arch:
+        description: "Include Arch Linux build?"
+        required: true
+        type: boolean
+        default: true
+      build_rpm:
+        description: "Include Fedora RPM build?"
+        required: true
+        type: boolean
+        default: true
+      build_deb:
+        description: "Include Debian build?"
+        required: true
+        type: boolean
+        default: true
+      build_flatpak:
+        description: "Include Flatpak build?"
+        required: true
+        type: boolean
+        default: true
+      build_appimage:
+        description: "Include AppImage build?"
+        required: true
+        type: boolean
+        default: true
+      build_nix:
+        description: "Include Nix build?"
+        required: true
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ inputs.version }}
+  cancel-in-progress: false
+
+jobs:
+  validate:
+    name: Validate release
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    outputs:
+      version: ${{ steps.meta.outputs.version }}
+      tag: ${{ steps.meta.outputs.tag }}
+      notes: ${{ steps.meta.outputs.notes }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.commit }}
+          fetch-depth: 0
+      - name: Check commit, version, notes and toggles
+        id: meta
+        env:
+          COMMIT: ${{ inputs.commit }}
+          RAW_VERSION: ${{ inputs.version }}
+          BUILD_ARCH: ${{ inputs.build_arch }}
+          BUILD_RPM: ${{ inputs.build_rpm }}
+          BUILD_DEB: ${{ inputs.build_deb }}
+          BUILD_FLATPAK: ${{ inputs.build_flatpak }}
+          BUILD_APPIMAGE: ${{ inputs.build_appimage }}
+          BUILD_NIX: ${{ inputs.build_nix }}
+        run: |
+          set -euo pipefail
+
+          if [[ ! "$COMMIT" =~ ^[0-9a-fA-F]{40}$ ]]; then
+            echo "::error::commit must be a full 40-character SHA"
+            exit 1
+          fi
+          if [ "$(git rev-parse HEAD)" != "$(git rev-parse "$COMMIT^{commit}")" ]; then
+            echo "::error::checked out commit does not match $COMMIT"
+            exit 1
+          fi
+
+          version="${RAW_VERSION#v}"
+          if [[ ! "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "::error::version must look like 0.1.0 (no v, no suffix)"
+            exit 1
+          fi
+          tag="v$version"
+
+          cargo_version="$(sed -n 's/^version = "\(.*\)"/\1/p' Cargo.toml | head -1)"
+          lock_version="$(grep -A1 '^name = "roseline"$' Cargo.lock | sed -n 's/^version = "\(.*\)"/\1/p' | head -1)"
+          if [ "$cargo_version" != "$version" ]; then
+            echo "::error::Cargo.toml says $cargo_version, not $version"
+            exit 1
+          fi
+          if [ "$lock_version" != "$version" ]; then
+            echo "::error::Cargo.lock says $lock_version, not $version; run cargo update -p roseline"
+            exit 1
+          fi
+
+          notes=""
+          for candidate in "docs/releases/$version.md" "docs/releases/v$version.md"; do
+            if [ -s "$candidate" ]; then
+              notes="$candidate"
+              break
+            fi
+          done
+          if [ -z "$notes" ]; then
+            echo "::error::missing or empty release notes: docs/releases/$version.md"
+            exit 1
+          fi
+
+          selected=0
+          for flag in "$BUILD_ARCH" "$BUILD_RPM" "$BUILD_DEB" "$BUILD_FLATPAK" "$BUILD_APPIMAGE" "$BUILD_NIX"; do
+            if [ "$flag" = "true" ]; then
+              selected=1
+            fi
+          done
+          if [ "$selected" -ne 1 ]; then
+            echo "::error::select at least one build"
+            exit 1
+          fi
+
+          if git ls-remote --exit-code --tags origin "refs/tags/$tag" >/dev/null 2>&1; then
+            echo "::error::tag $tag already exists; delete it first"
+            exit 1
+          fi
+
+          {
+            echo "version=$version"
+            echo "tag=$tag"
+            echo "notes=$notes"
+          } >> "$GITHUB_OUTPUT"
+
+  arch:
+    name: Arch package
+    needs: validate
+    if: ${{ inputs.build_arch }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    container: archlinux:latest
+    steps:
+      - name: Install git for checkout
+        run: pacman -Syu --noconfirm --needed git
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.commit }}
+          fetch-depth: 0
+      - name: Build package
+        env:
+          VERSION: ${{ needs.validate.outputs.version }}
+        run: |
+          set -euo pipefail
+          pacman -S --noconfirm --needed base-devel rust cargo gtk4 libadwaita glib2 pkgconf zstd
+          make dist VERSION="$VERSION"
+          cp build-aux/PKGBUILD build/PKGBUILD
+          sed -i "s/^pkgver=.*/pkgver=$VERSION/" build/PKGBUILD
+          useradd -m builder
+          chown -R builder:builder "$PWD"
+          su builder -s /bin/bash -c "cd '$PWD/build' && makepkg --noconfirm --nocheck"
+          ls -l build/*.pkg.tar.zst
+      - uses: actions/upload-artifact@v7
+        with:
+          name: arch
+          path: build/roseline-${{ needs.validate.outputs.version }}-1-x86_64.pkg.tar.zst
+          if-no-files-found: error
+
+  rpm:
+    name: Fedora RPM
+    needs: validate
+    if: ${{ inputs.build_rpm }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    container: fedora:latest
+    steps:
+      - name: Install git for checkout
+        run: dnf install -y git
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.commit }}
+          fetch-depth: 0
+      - name: Build package
+        env:
+          VERSION: ${{ needs.validate.outputs.version }}
+        run: |
+          set -euo pipefail
+          dnf install -y rpm-build make gcc cargo rust gtk4-devel libadwaita-devel glib2-devel
+          make dist VERSION="$VERSION"
+          mkdir -p rpmbuild/{BUILD,BUILDROOT,RPMS,SOURCES,SPECS,SRPMS}
+          cp "build/roseline-$VERSION.tar.gz" rpmbuild/SOURCES/
+          sed "s/^Version:.*/Version:        $VERSION/" build-aux/roseline.spec > rpmbuild/SPECS/roseline.spec
+          rpmbuild --define "_topdir $PWD/rpmbuild" -bb rpmbuild/SPECS/roseline.spec
+          cp rpmbuild/RPMS/x86_64/*.rpm build/
+          ls -l build/*.rpm
+      - uses: actions/upload-artifact@v7
+        with:
+          name: rpm
+          path: build/*.rpm
+          if-no-files-found: error
+
+  deb:
+    name: Debian package
+    needs: validate
+    if: ${{ inputs.build_deb }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    container: ubuntu:24.04
+    steps:
+      - name: Install git for checkout
+        run: apt-get update && apt-get install -y git ca-certificates
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.commit }}
+          fetch-depth: 0
+      - name: Build package
+        run: |
+          set -euo pipefail
+          apt-get install -y build-essential pkg-config libgtk-4-dev libadwaita-1-dev libglib2.0-dev curl
+          curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --profile minimal
+          . "$HOME/.cargo/env"
+          cargo build --release --locked
+          ./build-aux/make-deb.sh
+          ls -l build/*.deb
+      - uses: actions/upload-artifact@v7
+        with:
+          name: deb
+          path: build/*.deb
+          if-no-files-found: error
+
+  appimage:
+    name: AppImage
+    needs: validate
+    if: ${{ inputs.build_appimage }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    container: ubuntu:24.04
+    steps:
+      - name: Install git for checkout
+        run: apt-get update && apt-get install -y git ca-certificates
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.commit }}
+          fetch-depth: 0
+      - name: Build package
+        run: |
+          set -euo pipefail
+          apt-get install -y build-essential pkg-config libgtk-4-dev libadwaita-1-dev \
+            libglib2.0-dev curl file imagemagick
+          curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --profile minimal
+          . "$HOME/.cargo/env"
+          ./build-aux/make-appimage.sh
+          ls -l build/*.AppImage
+      - uses: actions/upload-artifact@v7
+        with:
+          name: appimage
+          path: build/*.AppImage
+          if-no-files-found: error
+
+  flatpak:
+    name: Flatpak
+    needs: validate
+    if: ${{ inputs.build_flatpak }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    container:
+      image: ghcr.io/flathub-infra/flatpak-github-actions:gnome-51
+      options: --privileged
+      volumes:
+        - /var/lib/flatpak
+        - /var/tmp
+      env:
+        TMPDIR: /var/tmp
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.commit }}
+          fetch-depth: 0
+      - name: Add Flathub
+        run: flatpak remote-add --if-not-exists flathub https://dl.flathub.org/repo/flathub.flatpakrepo
+      - name: Build bundle
+        uses: flatpak/flatpak-github-actions/flatpak-builder@v6
+        with:
+          bundle: Roseline-${{ needs.validate.outputs.version }}-x86_64.flatpak
+          manifest-path: build-aux/net.buwryy.Roseline.yml
+          cache-key: roseline-flatpak-${{ inputs.commit }}
+          upload-artifact: "false"
+      - name: Stage bundle
+        run: |
+          set -euo pipefail
+          mkdir -p build
+          find "$GITHUB_WORKSPACE" -maxdepth 1 -name 'Roseline-*.flatpak' -print -exec mv {} build/ \;
+          ls -l build/*.flatpak
+      - uses: actions/upload-artifact@v7
+        with:
+          name: flatpak
+          path: build/*.flatpak
+          if-no-files-found: error
+
+  nix:
+    name: Nix build
+    needs: validate
+    if: ${{ inputs.build_nix }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.commit }}
+          fetch-depth: 0
+      - uses: cachix/install-nix-action@v31
+        with:
+          extra_nix_config: |
+            experimental-features = nix-command flakes
+      - name: Build package
+        env:
+          VERSION: ${{ needs.validate.outputs.version }}
+        run: |
+          set -euo pipefail
+          sed -i "s/^  version = \".*\";/  version = \"$VERSION\";/" nix/package.nix
+          nix build .#roseline --print-build-logs
+          mkdir -p build/nix
+          cp -a result/. build/nix/
+          tar -C build/nix -cJf "build/roseline-$VERSION-x86_64-nix.tar.xz" .
+          ls -l build/*nix.tar.xz
+      - uses: actions/upload-artifact@v7
+        with:
+          name: nix
+          path: build/*nix.tar.xz
+          if-no-files-found: error
+
+  release:
+    name: Publish release
+    needs: [validate, arch, rpm, deb, appimage, flatpak, nix]
+    if: ${{ always() && needs.validate.result == 'success' && (needs.arch.result == 'success' || needs.arch.result == 'skipped') && (needs.rpm.result == 'success' || needs.rpm.result == 'skipped') && (needs.deb.result == 'success' || needs.deb.result == 'skipped') && (needs.appimage.result == 'success' || needs.appimage.result == 'skipped') && (needs.flatpak.result == 'success' || needs.flatpak.result == 'skipped') && (needs.nix.result == 'success' || needs.nix.result == 'skipped') }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.commit }}
+          fetch-depth: 0
+      - uses: actions/download-artifact@v8
+        with:
+          path: dist
+          merge-multiple: true
+      - name: Check the selected artifacts
+        env:
+          VERSION: ${{ needs.validate.outputs.version }}
+          BUILD_ARCH: ${{ inputs.build_arch }}
+          BUILD_RPM: ${{ inputs.build_rpm }}
+          BUILD_DEB: ${{ inputs.build_deb }}
+          BUILD_FLATPAK: ${{ inputs.build_flatpak }}
+          BUILD_APPIMAGE: ${{ inputs.build_appimage }}
+          BUILD_NIX: ${{ inputs.build_nix }}
+        run: |
+          set -euo pipefail
+          ls -lh dist
+          test -n "$(find dist -maxdepth 1 -type f -print -quit)"
+
+          require() {
+            compgen -G "dist/$1" >/dev/null || {
+              echo "::error::missing release asset: $1"
+              exit 1
+            }
+          }
+
+          [ "$BUILD_ARCH" = "true" ] && require "roseline-$VERSION-1-x86_64.pkg.tar.zst"
+          [ "$BUILD_RPM" = "true" ] && require "roseline-$VERSION-1.*.x86_64.rpm"
+          [ "$BUILD_DEB" = "true" ] && require "roseline_${VERSION}_amd64.deb"
+          [ "$BUILD_FLATPAK" = "true" ] && require "Roseline-$VERSION-x86_64.flatpak"
+          [ "$BUILD_APPIMAGE" = "true" ] && require "Roseline-$VERSION-x86_64.AppImage"
+          [ "$BUILD_NIX" = "true" ] && require "roseline-$VERSION-x86_64-nix.tar.xz"
+      - name: Create the GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ needs.validate.outputs.tag }}
+          VERSION: ${{ needs.validate.outputs.version }}
+          NOTES: ${{ needs.validate.outputs.notes }}
+          COMMIT: ${{ inputs.commit }}
+        run: |
+          set -euo pipefail
+          gh release create "$TAG" \
+            --target "$COMMIT" \
+            --title "Roséline v$VERSION" \
+            --notes-file "$NOTES" \
+            dist/*

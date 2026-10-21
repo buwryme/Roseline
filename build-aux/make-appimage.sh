@@ -25,7 +25,13 @@ install -Dm644 data/icons/hicolor/128x128/apps/net.buwryy.Roseline.png \
 install -Dm644 LICENSE "$appdir/usr/share/licenses/roseline/LICENSE"
 install -Dm644 NOTICE "$appdir/usr/share/licenses/roseline/NOTICE"
 strip --strip-unneeded "$appdir/usr/bin/roseline" || true
-ln -sf usr/bin/roseline "$appdir/AppRun"
+cat > "$appdir/AppRun" <<'EOF'
+#!/bin/sh
+here=$(dirname "$(readlink -f "$0")")
+export LD_LIBRARY_PATH="$here/usr/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+exec "$here/usr/bin/roseline" "$@"
+EOF
+chmod 755 "$appdir/AppRun"
 # appimagetool needs a root icon; make a 256 png where we can
 if command -v magick >/dev/null 2>&1; then
     magick -background none -density 384 \
@@ -48,12 +54,14 @@ while read -r line; do
     esac
     lib="${lib%% *}"
     [ -f "$lib" ] || continue
-    case "$lib" in
-        /lib64/*|/usr/lib64/libc.so*|/usr/lib64/libm.so*|/usr/lib64/libdl.so*| \
-        /usr/lib64/libpthread.so*|/usr/lib64/librt.so*|/usr/lib64/libgcc_s.so*) continue ;;
+    # these belong to the host's glibc/loader; bundling them breaks AppImages.
+    case "$(basename "$lib")" in
+        libc.so.*|libm.so.*|libmvec.so.*|libdl.so.*|libpthread.so.*|librt.so.*| \
+        libresolv.so.*|libutil.so.*|libnsl.so.*|libanl.so.*|libgcc_s.so.*| \
+        ld-linux*.so.*) continue ;;
     esac
     case "$lib" in
-        /usr/lib64/*|/lib/*|/usr/lib/*) cp -Ln "$lib" "$appdir/usr/lib/" || true ;;
+        /*) cp -Ln "$lib" "$appdir/usr/lib/" || true ;;
     esac
 done < <(ldd target/release/roseline)
 
