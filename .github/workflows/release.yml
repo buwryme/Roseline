@@ -450,16 +450,17 @@ jobs:
           fi
       - name: Create the GitHub release
         env:
-          GH_TOKEN: ${{ github.token }}
+          # the built-in token cannot create tags or releases for commits that
+          # touch .github/workflows; RELEASE_TOKEN is a PAT with workflows: write.
+          GH_TOKEN: ${{ secrets.RELEASE_TOKEN || github.token }}
           TAG: ${{ needs.validate.outputs.tag }}
           VERSION: ${{ needs.validate.outputs.version }}
           NOTES: ${{ needs.validate.outputs.notes }}
           COMMIT: ${{ inputs.commit }}
         run: |
           set -euo pipefail
-          git tag "$TAG" "$COMMIT"
-          git push origin "refs/tags/$TAG"
           gh release create "$TAG" \
+            --target "$COMMIT" \
             --title "Roséline v$VERSION" \
             --notes-file "$NOTES" \
             dist/*

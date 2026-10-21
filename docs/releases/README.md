@@ -16,3 +16,11 @@ The version input must match `Cargo.toml` and `Cargo.lock`, and must be plain
 
 Package recipes are versioned from that input during the build; the source
 commit itself only needs its cargo version bumped.
+
+## release token
+
+GitHub's built-in `GITHUB_TOKEN` cannot create a tag or release when the target
+commit touches `.github/workflows`. Add a `RELEASE_TOKEN` repository secret with
+a fine-grained PAT that has **Contents: write** and **Workflows: write**; the
+workflow uses it automatically. Without it, build jobs still run but publishing
+the release fails at the tag step.
