@@ -38,11 +38,7 @@ pub fn run(progress: &Progress, uri: Option<&str>) -> Result<Child> {
         settings.runner = Some(runner_id);
         let _ = settings.save();
     }
-    ensure_prefix(progress, &settings)?;
-    crate::roblox::ensure(progress)?;
-    crate::roblox::brand()?;
-    crate::overlay::apply(progress)?;
-    crate::flags::write(&settings)?;
+    prepare_bottle(progress, &settings)?;
 
     progress.stage("Starting Roblox");
     let (_, binary) = paths
@@ -76,6 +72,30 @@ pub fn run(progress: &Progress, uri: Option<&str>) -> Result<Child> {
         .with_context(|| "could not start Rosemary")?;
     crate::util::write_atomic(&paths.game_pid(), child.id().to_string().as_bytes())?;
     Ok(child)
+}
+
+/// what setup downloads before the first launch: a runner, the prefix, the
+/// client and the overlay, with no game process.
+pub fn prepare(progress: &Progress, tag: Option<&str>) -> Result<()> {
+    let mut settings = Settings::load();
+    let runner_id = match tag {
+        Some(tag) => crate::runner::ensure_tag(progress, tag)?,
+        None => crate::runner::ensure(progress)?,
+    };
+    if tag.is_some() || settings.runner.is_none() {
+        settings.runner = Some(runner_id);
+        settings.save()?;
+    }
+    prepare_bottle(progress, &settings)
+}
+
+fn prepare_bottle(progress: &Progress, settings: &Settings) -> Result<()> {
+    ensure_prefix(progress, settings)?;
+    crate::roblox::ensure(progress)?;
+    crate::roblox::brand()?;
+    crate::overlay::apply(progress)?;
+    crate::flags::write(settings)?;
+    Ok(())
 }
 
 /// take a wedged guest out without asking.

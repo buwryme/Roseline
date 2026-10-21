@@ -8,6 +8,7 @@ pub(crate) mod flags_page;
 pub(crate) mod graphics_page;
 pub(crate) mod runner_page;
 pub(crate) mod settings_page;
+pub(crate) mod setup;
 pub(crate) mod splash;
 pub(crate) mod window;
 

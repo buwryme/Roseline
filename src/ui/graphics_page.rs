@@ -16,10 +16,16 @@ pub fn build() -> adw::PreferencesPage {
     let settings = Rc::new(RefCell::new(Settings::load()));
     let page = adw::PreferencesPage::new();
     let group = adw::PreferencesGroup::builder().title("Graphics").build();
+    group.add(&api_row(&settings));
+    group.add(&device_row(&settings));
+    page.add(&group);
+    page
+}
 
+pub(crate) fn api_row(settings: &Rc<RefCell<Settings>>) -> adw::ComboRow {
     let api = adw::ComboRow::builder()
         .title("Graphics API")
-        .subtitle("Choose the Graphics API Roblox will run under. Auto favours Vulkan.")
+        .subtitle("Choose the Graphics API Roblox will run under.\nAuto favours Vulkan.")
         .build();
     api.add_prefix(&row_prefix("video-display-symbolic"));
     let model = gtk::StringList::new(&[]);
@@ -45,10 +51,12 @@ pub fn build() -> adw::PreferencesPage {
             let _ = settings.borrow().save();
         }
     ));
-    group.add(&api);
+    api
+}
 
+pub(crate) fn device_row(settings: &Rc<RefCell<Settings>>) -> adw::ComboRow {
     let gpus = gpu::list();
-    let device = adw::ComboRow::builder().title("Device").build();
+    let device = adw::ComboRow::builder().title("Graphics Device").build();
     device.add_prefix(&row_prefix("video-display-symbolic"));
     let model = gtk::StringList::new(&["Automatic"]);
     for card in &gpus {
@@ -76,10 +84,7 @@ pub fn build() -> adw::PreferencesPage {
             let _ = settings.borrow().save();
         }
     ));
-    group.add(&device);
-
-    page.add(&group);
-    page
+    device
 }
 
 fn display_name(card: &gpu::Gpu, all: &[gpu::Gpu]) -> String {

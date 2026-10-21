@@ -119,6 +119,25 @@ pub fn ensure(progress: &Progress) -> Result<String> {
     install(&release, progress)
 }
 
+/// install one chosen release unless it is already here.
+pub fn ensure_tag(progress: &Progress, tag: &str) -> Result<String> {
+    let id = id_for(tag);
+    if Paths::get()
+        .runners()
+        .join(&id)
+        .join("bin/rosemary")
+        .is_file()
+    {
+        return Ok(id);
+    }
+    progress.stage(format!("Finding Rosemary {tag}"));
+    let release = crate::github::releases()?
+        .into_iter()
+        .find(|release| release.tag_name == tag)
+        .with_context(|| format!("Rosemary {tag} vanished from GitHub"))?;
+    install(&release, progress)
+}
+
 /// download, verify and unpack one release; older versions stay pinnable.
 pub fn install(release: &Release, progress: &Progress) -> Result<String> {
     let paths = Paths::get();

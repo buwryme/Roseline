@@ -309,7 +309,7 @@ fn run_action(button: &gtk::Button, action: &'static str, title: &'static str) {
 }
 
 /// one environment list; `pick` decides which list the page touches.
-fn environment_group(
+pub(crate) fn environment_group(
     settings: &Rc<RefCell<Settings>>,
     title: &'static str,
     description: &'static str,

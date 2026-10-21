@@ -64,6 +64,10 @@ pub fn start(uri: Option<String>) {
         already_running_dialog();
         return;
     }
+    if !super::setup::is_complete() {
+        super::setup::start(uri);
+        return;
+    }
     if let Some(existing) = SPLASH.with(|slot| slot.borrow().clone())
         && existing.is_active()
     {
@@ -252,6 +256,7 @@ impl Splash {
             }
             Event::Failed(text) => self.failed(&text),
             Event::Spawned(spawned) => self.adopt(spawned),
+            Event::Done => {}
         }
     }
 

@@ -13,6 +13,8 @@ pub enum Event {
     Progress(f64),
     /// the game is up.
     Spawned(Spawned),
+    /// everything before the game is in place; setup stops here.
+    Done,
     /// the pipeline stopped; the text says why.
     Failed(String),
 }
@@ -53,6 +55,10 @@ impl Progress {
 
     pub fn spawned(&self, spawned: Spawned) {
         let _ = self.sender.send_blocking(Event::Spawned(spawned));
+    }
+
+    pub fn done(&self) {
+        let _ = self.sender.send_blocking(Event::Done);
     }
 
     pub fn failed(&self, text: impl Into<String>) {
