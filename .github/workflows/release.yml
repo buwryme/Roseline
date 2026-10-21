@@ -457,8 +457,9 @@ jobs:
           COMMIT: ${{ inputs.commit }}
         run: |
           set -euo pipefail
+          git tag "$TAG" "$COMMIT"
+          git push origin "refs/tags/$TAG"
           gh release create "$TAG" \
-            --target "$COMMIT" \
             --title "Roséline v$VERSION" \
             --notes-file "$NOTES" \
             dist/*
