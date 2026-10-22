@@ -40,6 +40,23 @@ and is fully open source, from back-to-back.
 - a GPU with a working Vulkan driver (recommended), or a working OpenGL stack as the fallback
 - more or less, 1GB of disk for the client, the runner and the base
 
+## quick install
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/buwryme/Roseline/main/scripts/setup.sh | bash
+```
+
+The installer detects the distribution, lets you choose between a system-wide 
+package and a Flatpak, lists the published versions, confirms everything,
+then installs Roséline.
+
+### Unattended install:
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/buwryme/Roseline/main/scripts/setup.sh | bash -s -- --system --version v0.1.0 --yes
+curl -fsSL https://raw.githubusercontent.com/buwryme/Roseline/main/scripts/setup.sh | bash -s -- --flatpak --latest --yes
+```
+
 ## from source
 
 ```sh
@@ -52,22 +69,6 @@ make install PREFIX=~/.local   # or per-user
 default `roblox://` and `roblox-player://` handler. The config in
 `~/.config/roseline` and the app data in `~/.local/share/roseline` never
 travel with it; they are the user's, not the install's.
-
-## remote installer
-
-```sh
-curl -fsSL https://raw.githubusercontent.com/buwryme/Roseline/main/scripts/setup.sh | bash
-```
-
-The installer detects the distribution, offers a system-wide package or a
-Flatpak, lists the published versions (stable releases first, hotfixes
-preferred), and keeps sudo alive while it downloads and installs. Flags for
-unattended use:
-
-```sh
-curl -fsSL https://raw.githubusercontent.com/buwryme/Roseline/main/scripts/setup.sh | bash -s -- --system --version v0.1.0 --yes
-curl -fsSL https://raw.githubusercontent.com/buwryme/Roseline/main/scripts/setup.sh | bash -s -- --flatpak --latest --yes
-```
 
 ## packages
 
