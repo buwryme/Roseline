@@ -43,14 +43,14 @@ and is fully open source, from back-to-back.
 ## quick install
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/buwryme/Roseline/main/scripts/setup.sh | bash
+curl -fsSL https://buwryy.net/api/roseline/setup-script | bash
 ```
 
 ### non-interactive install:
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/buwryme/Roseline/main/scripts/setup.sh | bash -s -- --system --version v0.1.0 --yes
-curl -fsSL https://raw.githubusercontent.com/buwryme/Roseline/main/scripts/setup.sh | bash -s -- --flatpak --latest --yes
+curl -fsSL https://buwryy.net/api/roseline/setup-script | bash -s -- --system --version v0.1.0 --yes
+curl -fsSL https://buwryy.net/api/roseline/setup-script | bash -s -- --flatpak --latest --yes
 ```
 
 ## from source

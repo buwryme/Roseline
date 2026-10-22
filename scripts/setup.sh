@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # roseline remote installer
-# usage: curl -fsSL https://raw.githubusercontent.com/buwryme/Roseline/main/scripts/setup.sh | bash
+# usage: curl -fsSL https://buwryy.net/api/roseline/setup-script | bash
 
 set -euo pipefail
 
@@ -133,9 +133,9 @@ trap 'exit 143' TERM
 usage() {
     cat <<'EOF'
 usage:
-  curl -fsSL https://raw.githubusercontent.com/buwryme/Roseline/main/scripts/setup.sh | bash
-  curl -fsSL https://raw.githubusercontent.com/buwryme/Roseline/main/scripts/setup.sh | bash -s -- --system --version v0.1.0 --yes
-  curl -fsSL https://raw.githubusercontent.com/buwryme/Roseline/main/scripts/setup.sh | bash -s -- --flatpak --latest --yes
+  curl -fsSL https://buwryy.net/api/roseline/setup-script | bash
+  curl -fsSL https://buwryy.net/api/roseline/setup-script | bash -s -- --system --version v0.1.0 --yes
+  curl -fsSL https://buwryy.net/api/roseline/setup-script | bash -s -- --flatpak --latest --yes
 
 options:
   --system, --flatpak   skip the install-method prompt
