@@ -46,11 +46,7 @@ and is fully open source, from back-to-back.
 curl -fsSL https://raw.githubusercontent.com/buwryme/Roseline/main/scripts/setup.sh | bash
 ```
 
-The installer detects the distribution, lets you choose between a system-wide 
-package and a Flatpak, lists the published versions, confirms everything,
-then installs Roséline.
-
-### Unattended install:
+### non-interactive install:
 
 ```sh
 curl -fsSL https://raw.githubusercontent.com/buwryme/Roseline/main/scripts/setup.sh | bash -s -- --system --version v0.1.0 --yes
