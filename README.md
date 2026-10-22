@@ -53,6 +53,22 @@ default `roblox://` and `roblox-player://` handler. The config in
 `~/.config/roseline` and the app data in `~/.local/share/roseline` never
 travel with it; they are the user's, not the install's.
 
+## remote installer
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/buwryme/Roseline/main/scripts/setup.sh | bash
+```
+
+The installer detects the distribution, offers a system-wide package or a
+Flatpak, lists the published versions (stable releases first, hotfixes
+preferred), and keeps sudo alive while it downloads and installs. Flags for
+unattended use:
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/buwryme/Roseline/main/scripts/setup.sh | bash -s -- --system --version v0.1.0 --yes
+curl -fsSL https://raw.githubusercontent.com/buwryme/Roseline/main/scripts/setup.sh | bash -s -- --flatpak --latest --yes
+```
+
 ## packages
 
 Every recipe builds from this tree and drops its artifact in `build/`.
