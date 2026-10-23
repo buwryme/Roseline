@@ -103,8 +103,9 @@ which otherwise keeps shadowing the package's icon.
   then once everything is done setting up, Roblox opens.
 - right click the entry (or use **Roséline Settings**, the separate entry
   for menus without actions) for the manager: graphics backend and GPU
-  choice, content overlays (cursor, fonts, textures, skybox...), 
-  the Rosemary runner with its MiniDarwin base, FFlags, environment variables...
+  choice, text and monospace font picks, content overlays (cursor, textures,
+  skybox...), the Rosemary runner with its MiniDarwin base, FFlags,
+  environment variables...
 - links to `roblox://` and `roblox-player://` install, so
   Play buttons on the website and private-server links work,
   since Rosemary (as of v0.3.0) doesn't supply a proper WebKit implementation 
@@ -115,13 +116,14 @@ which otherwise keeps shadowing the package's icon.
 - automatic client updates from Roblox's own version endpoint
 - Vulkan by default (Metal2Vulkan backed), OpenGL as a fallback
 - GPU pickers for both paths, inspired from Butter's device selection
-- content overlays (cursors, fonts, skyboxes, sounds, platform textures)
+- text and monospace font overrides, leaving language and emoji fonts alone
+- content overlays (cursors, skyboxes, sounds, platform textures)
   that re-apply on client updates
 - Runner management: install, verify, repair, reset the Darwin base, and
   the read-only / warn / recover policy for system files
 - Environment variables for both Rosemary itself, and the Roblox executable
 - fast flags, locked to Roblox's own allowlist, written before each launch
-- optional Discord Rich Presence, on by default, with toggleable Join Game button
+- optional Discord Rich Presence, on by default, with Join Game and View Game buttons; joins open through the browser so Flatpak Discord clients can hand off to Roblox
 - only one instance can run to prevent potential bans!!!
 
 ## how it works
@@ -129,7 +131,7 @@ which otherwise keeps shadowing the package's icon.
 Roséline keeps its own copy of `RobloxPlayer.app`, fetched from
 `setup.rbxcdn.com` through the same version endpoint the official client
 uses. every launch checks for a newer version, swaps the copy when there
-is one, re-applies the content overlay, and hands the bundle to
+is one, re-applies the font overrides and content overlay, and hands the bundle to
 [Rosemary](https://github.com/microlift/rosemary) with the settings from
 the manager. The runner and the MiniDarwin base stick close to
 [Butter](https://github.com/microlift/butter)'s mechanisms.

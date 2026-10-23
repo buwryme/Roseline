@@ -2,6 +2,7 @@
 
 mod config;
 mod flags;
+mod fonts;
 mod gameinfo;
 mod github;
 mod gpu;

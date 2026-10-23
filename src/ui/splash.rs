@@ -15,7 +15,7 @@ use gtk::glib;
 use crate::launch;
 use crate::progress::{Event, Progress, Spawned};
 use crate::rpc::Discord;
-use crate::session::{self, Session};
+use crate::session;
 use crate::settings::Settings;
 
 const LOGO_RESOURCE: &str = "/net/buwryy/Roseline/icons/scalable/apps/net.buwryy.Roseline.svg";
@@ -47,7 +47,7 @@ struct Inner {
     child: Option<Child>,
     rpc: Option<Discord>,
     pid: Option<u32>,
-    session: Option<Session>,
+    session_task: Option<glib::JoinHandle<()>>,
     timer: Option<glib::SourceId>,
     target: u8,
     shown: f64,
@@ -240,7 +240,7 @@ impl Splash {
         });
 
         std::thread::spawn(move || match launch::run(&progress, uri.as_deref()) {
-            Ok(child) => {
+            Ok((child, events)) => {
                 let settings = Settings::load();
                 let pid = child.id();
                 let rpc = if settings.discord.enabled {
@@ -251,7 +251,12 @@ impl Splash {
                 } else {
                     None
                 };
-                progress.spawned(Spawned { child, rpc, pid });
+                progress.spawned(Spawned {
+                    child,
+                    rpc,
+                    pid,
+                    events,
+                });
             }
             Err(error) => progress.failed(format!("{error:#}")),
         });
@@ -299,14 +304,18 @@ impl Splash {
     }
 
     fn adopt(self: &Rc<Self>, spawned: Spawned) {
-        let Spawned { child, rpc, pid } = spawned;
+        let Spawned {
+            child,
+            rpc,
+            pid,
+            events,
+        } = spawned;
         {
             let mut inner = self.inner.borrow_mut();
             inner.phase = Phase::Running;
             inner.child = Some(child);
             inner.rpc = rpc;
             inner.pid = Some(pid);
-            inner.session = Some(Session::new());
             inner.started = Some(Instant::now());
         }
         self.set_percent(60);
@@ -314,6 +323,14 @@ impl Splash {
         let splash = self.clone();
         let timer = glib::timeout_add_local(Duration::from_millis(250), move || splash.tick());
         self.inner.borrow_mut().timer = Some(timer);
+
+        let splash = self.clone();
+        let task = glib::spawn_future_local(async move {
+            while let Ok(event) = events.recv().await {
+                splash.handle_session_event(event);
+            }
+        });
+        self.inner.borrow_mut().session_task = Some(task);
 
         // if the guest never says anything useful, do not sit here forever.
         let splash = self.clone();
@@ -337,31 +354,25 @@ impl Splash {
             return glib::ControlFlow::Break;
         }
         self.ensure_rpc();
-        let events = {
-            let mut inner = self.inner.borrow_mut();
-            match inner.session.as_mut() {
-                Some(session) => session.tick(),
-                None => Vec::new(),
-            }
-        };
-        for event in events {
-            match event {
-                session::Event::Progress(percent, _caption) => {
-                    self.set_percent(percent);
-                    // the app paints its window right around this marker;
-                    // earlier milestones run seconds ahead of it.
-                    if percent >= 92 {
-                        self.complete();
-                    }
-                }
-                session::Event::Joining(joining) => {
-                    self.set_percent(90);
-                    self.resolve_game(joining);
-                }
-                session::Event::Left => self.left_game(),
-            }
-        }
         glib::ControlFlow::Continue
+    }
+
+    fn handle_session_event(self: &Rc<Self>, event: session::Event) {
+        match event {
+            session::Event::Progress(percent, _caption) => {
+                self.set_percent(percent);
+                // the app paints its window right around this marker;
+                // earlier milestones run seconds ahead of it.
+                if percent >= 92 {
+                    self.complete();
+                }
+            }
+            session::Event::Joining(joining) => {
+                self.set_percent(90);
+                self.resolve_game(joining);
+            }
+            session::Event::Left => self.left_game(),
+        }
     }
 
     /// bow out once the game is really up.
@@ -540,7 +551,7 @@ impl Splash {
                         .then(|| game.cover_url.clone())
                         .or_else(|| Some(crate::rpc::ROBLOX_LOGO.to_string())),
                     small_image: Some(crate::rpc::ROBLOX_LOGO.to_string()),
-                    button: Some(game_button(settings.discord.join_button, game)),
+                    buttons: game_buttons(settings.discord.join_button, game),
                 }
             } else {
                 launch::idle_activity(settings)
@@ -571,6 +582,9 @@ impl Splash {
             if let Some(timer) = inner.timer.take() {
                 timer.remove();
             }
+            if let Some(task) = inner.session_task.take() {
+                task.abort();
+            }
             let pid = inner.pid;
             if let (Some(rpc), Some(pid)) = (inner.rpc.as_mut(), pid) {
                 rpc.clear(pid);
@@ -583,7 +597,6 @@ impl Splash {
             inner.rpc = None;
             inner.child = None;
             inner.pid = None;
-            inner.session = None;
             inner.hold = None;
             inner.phase = Phase::Idle;
             inner.target = 0;
@@ -600,17 +613,21 @@ impl Splash {
     }
 }
 
-fn game_button(join_enabled: bool, game: &Game) -> crate::rpc::Button {
+fn game_buttons(join_enabled: bool, game: &Game) -> Vec<crate::rpc::Button> {
+    let view = crate::rpc::Button {
+        label: "View Game",
+        url: game.page_url.clone(),
+    };
     if join_enabled && !game.private {
-        crate::rpc::Button {
-            label: "Join Game",
-            url: game.join_url.clone(),
-        }
+        vec![
+            crate::rpc::Button {
+                label: "Join Game",
+                url: game.join_url.clone(),
+            },
+            view,
+        ]
     } else {
-        crate::rpc::Button {
-            label: "View Game",
-            url: game.page_url.clone(),
-        }
+        vec![view]
     }
 }
 
@@ -787,29 +804,38 @@ mod tests {
     }
 
     #[test]
-    fn join_button_falls_back_to_view_game() {
+    fn presence_buttons_include_the_game_page_fallback() {
         let game = Game {
             name: "Blox Fruits".into(),
             cover_url: String::new(),
-            join_url: "roblox://experiences/start?placeId=1&gameInstanceId=abc".into(),
+            join_url: "https://buwryy.net/join-roseline-discord-rpc-handler.html?placeId=1&gameInstanceId=abc".into(),
             page_url: "https://www.roblox.com/games/1".into(),
             private: false,
             started: 0,
         };
-        let join = game_button(true, &game);
-        assert_eq!(join.label, "Join Game");
-        assert!(join.url.starts_with("roblox://"));
+        let buttons = game_buttons(true, &game);
+        assert_eq!(buttons.len(), 2);
+        assert_eq!(buttons[0].label, "Join Game");
+        assert!(
+            buttons[0]
+                .url
+                .starts_with("https://buwryy.net/join-roseline-discord-rpc-handler.html?")
+        );
+        assert_eq!(buttons[1].label, "View Game");
+        assert_eq!(buttons[1].url, "https://www.roblox.com/games/1");
 
-        let view = game_button(false, &game);
-        assert_eq!(view.label, "View Game");
-        assert_eq!(view.url, "https://www.roblox.com/games/1");
+        let view_only = game_buttons(false, &game);
+        assert_eq!(view_only.len(), 1);
+        assert_eq!(view_only[0].label, "View Game");
+        assert_eq!(view_only[0].url, "https://www.roblox.com/games/1");
 
         let private = Game {
             private: true,
             ..game
         };
-        let fallback = game_button(true, &private);
-        assert_eq!(fallback.label, "View Game");
-        assert_eq!(fallback.url, "https://www.roblox.com/games/1");
+        let fallback = game_buttons(true, &private);
+        assert_eq!(fallback.len(), 1);
+        assert_eq!(fallback[0].label, "View Game");
+        assert_eq!(fallback[0].url, "https://www.roblox.com/games/1");
     }
 }

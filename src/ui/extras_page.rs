@@ -77,7 +77,7 @@ pub fn build() -> adw::PreferencesPage {
     let join = adw::SwitchRow::builder()
         .title("Let People Join")
         .subtitle(
-            "Puts a Join Game button on public servers. Private servers get View Game instead.",
+            "Adds a Join Game button on public servers, plus a View Game link. Join opens in the browser, so Flatpak Discord can hand it off. Private servers only get View Game.",
         )
         .active(settings.borrow().discord.join_button)
         .sensitive(settings.borrow().discord.show_game)

@@ -56,6 +56,10 @@ fn apply_at(paths: &Paths, progress: &Progress) -> Result<usize> {
 
     let mut sources = Vec::new();
     collect(&overlay, &overlay, &mut sources)?;
+    // fonts are owned by the font picker, which also rewrites family maps
+    // and keeps the client's originals for a clean reset.
+    let font_prefix = format!("{}/", crate::fonts::ROOT);
+    sources.retain(|(relative, _)| !relative.starts_with(&font_prefix));
     if sources.is_empty() {
         return Ok(0);
     }
@@ -275,7 +279,7 @@ mod tests {
             files: BTreeMap::new(),
         };
         state.files.insert(
-            "Contents/Resources/content/fonts/X.ttf".into(),
+            "Contents/Resources/content/textures/X.png".into(),
             Record {
                 src_size: 1,
                 src_mtime: 2,
@@ -289,8 +293,32 @@ mod tests {
         assert!(
             parsed
                 .files
-                .contains_key("Contents/Resources/content/fonts/X.ttf")
+                .contains_key("Contents/Resources/content/textures/X.png")
         );
+    }
+
+    #[test]
+    fn font_files_are_left_to_the_font_manager() {
+        let root =
+            std::env::temp_dir().join(format!("roseline-overlay-fonts-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        let paths = Paths {
+            data: root.clone(),
+            config: root.clone(),
+            cache: root.clone(),
+        };
+        let relative = "Contents/Resources/content/fonts/Test.ttf";
+        let destination = paths.app_bundle().join(relative);
+        std::fs::create_dir_all(destination.parent().unwrap()).unwrap();
+        std::fs::write(&destination, b"stock").unwrap();
+        let source = paths.overlay().join(relative);
+        std::fs::create_dir_all(source.parent().unwrap()).unwrap();
+        std::fs::write(&source, b"overlay").unwrap();
+
+        let progress = Progress::silent();
+        assert_eq!(apply_at(&paths, &progress).unwrap(), 0);
+        assert_eq!(std::fs::read(&destination).unwrap(), b"stock");
+        let _ = std::fs::remove_dir_all(&root);
     }
 
     #[test]
@@ -302,7 +330,7 @@ mod tests {
             config: root.clone(),
             cache: root.clone(),
         };
-        let relative = "Contents/Resources/content/fonts/Test.ttf";
+        let relative = "Contents/Resources/content/textures/Test.png";
         let destination = paths.app_bundle().join(relative);
         std::fs::create_dir_all(destination.parent().unwrap()).unwrap();
         std::fs::write(&destination, b"stock").unwrap();

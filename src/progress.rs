@@ -4,7 +4,9 @@
 
 use std::process::Child;
 
-use async_channel::Sender;
+use async_channel::{Receiver, Sender};
+
+use crate::session::Event as SessionEvent;
 
 pub enum Event {
     /// what the pipeline is doing, in one line.
@@ -23,6 +25,7 @@ pub struct Spawned {
     pub child: Child,
     pub rpc: Option<crate::rpc::Discord>,
     pub pid: u32,
+    pub events: Receiver<SessionEvent>,
 }
 
 /// the sending half; cloneable, used off the main thread.

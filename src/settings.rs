@@ -3,6 +3,7 @@
 //! user preferences, stored as TOML so source builds need no schema install.
 
 use std::collections::BTreeMap;
+use std::path::PathBuf;
 
 use serde::{Deserialize, Serialize};
 
@@ -13,6 +14,8 @@ use crate::config::Paths;
 pub struct Settings {
     pub graphics: Graphics,
     pub prefix: Prefix,
+    #[serde(default, skip_serializing_if = "Fonts::is_empty")]
+    pub fonts: Fonts,
     /// pinned runner id; the newest installed when unset.
     pub runner: Option<String>,
     /// flag selections by name; only allowlisted presets are used.
@@ -58,6 +61,23 @@ impl Backend {
 #[serde(default)]
 pub struct Prefix {
     pub system_files: SystemFiles,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(default)]
+pub struct Fonts {
+    /// one font file copied over every bundled text font.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub font: Option<PathBuf>,
+    /// one font file copied over every bundled monospace font.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub mono: Option<PathBuf>,
+}
+
+impl Fonts {
+    fn is_empty(&self) -> bool {
+        self.font.is_none() && self.mono.is_none()
+    }
 }
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -196,6 +216,8 @@ mod tests {
         assert_eq!(settings.graphics.backend, Backend::Auto);
         assert!(settings.graphics.device.is_none());
         assert_eq!(settings.prefix.system_files, SystemFiles::Repair);
+        assert!(settings.fonts.font.is_none());
+        assert!(settings.fonts.mono.is_none());
         assert!(settings.runner.is_none());
         assert!(settings.discord.enabled);
         assert!(settings.discord.show_game);

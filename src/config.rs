@@ -9,6 +9,8 @@ pub const APP_ID: &str = "net.buwryy.Roseline";
 pub const DISPLAY_NAME: &str = "Roséline";
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");
 pub const WEBSITE: &str = "https://github.com/buwryme/Roseline";
+/// https page that hands a Discord join button to the browser.
+pub const JOIN_PAGE: &str = "https://buwryy.net/join-roseline-discord-rpc-handler.html";
 
 /// where the runners come from.
 pub const ROSEMARY_OWNER: &str = "microlift";
@@ -80,6 +82,16 @@ impl Paths {
     /// content overrides, mirroring paths inside the app bundle.
     pub fn overlay(&self) -> PathBuf {
         self.data.join("overlay")
+    }
+
+    /// the client's own font files, kept while a font choice is applied.
+    pub fn font_backup(&self) -> PathBuf {
+        self.data.join("font-backup")
+    }
+
+    /// imported copies of the fonts the user picked.
+    pub fn font_store(&self) -> PathBuf {
+        self.data.join("fonts")
     }
 
     pub fn downloads(&self) -> PathBuf {

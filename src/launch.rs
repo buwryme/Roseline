@@ -28,7 +28,10 @@ pub fn running_pid() -> Option<u32> {
 }
 
 /// bring everything to order, then start the client and return the guest.
-pub fn run(progress: &Progress, uri: Option<&str>) -> Result<Child> {
+pub fn run(
+    progress: &Progress,
+    uri: Option<&str>,
+) -> Result<(Child, async_channel::Receiver<crate::session::Event>)> {
     let paths = Paths::get();
     let mut settings = Settings::load();
 
@@ -51,7 +54,8 @@ pub fn run(progress: &Progress, uri: Option<&str>) -> Result<Child> {
     crate::runner::refresh_launcher(runner_dir)?;
     std::fs::create_dir_all(paths.logs())?;
     let started = now();
-    let log = std::fs::File::create(paths.logs().join(format!("launch-{started}.log")))?;
+    let log_path = paths.logs().join(format!("launch-{started}.log"));
+    let log = std::fs::File::create(&log_path)?;
     let error_log = log.try_clone()?;
 
     let mut command = Command::new(binary);
@@ -71,7 +75,26 @@ pub fn run(progress: &Progress, uri: Option<&str>) -> Result<Child> {
         .spawn()
         .with_context(|| "could not start Rosemary")?;
     crate::util::write_atomic(&paths.game_pid(), child.id().to_string().as_bytes())?;
-    Ok(child)
+
+    // the child writes its guest log to this launch's file; tail that exact
+    // file, so a stale log from another instance can never be mistaken for it.
+    let (event_sender, event_receiver) = async_channel::bounded(64);
+    std::thread::spawn(move || {
+        let mut session = crate::session::Session::new(log_path);
+        loop {
+            if event_sender.is_closed() {
+                return;
+            }
+            for event in session.tick() {
+                if event_sender.send_blocking(event).is_err() {
+                    return;
+                }
+            }
+            std::thread::sleep(std::time::Duration::from_millis(100));
+        }
+    });
+
+    Ok((child, event_receiver))
 }
 
 /// what setup downloads before the first launch: a runner, the prefix, the
@@ -94,6 +117,7 @@ fn prepare_bottle(progress: &Progress, settings: &Settings) -> Result<()> {
     crate::roblox::ensure(progress)?;
     crate::roblox::brand()?;
     crate::overlay::apply(progress)?;
+    crate::fonts::apply(settings)?;
     crate::flags::write(settings)?;
     Ok(())
 }
@@ -114,7 +138,7 @@ pub fn idle_activity(settings: &Settings) -> crate::rpc::Activity {
         started: now(),
         large_image: Some(crate::rpc::ROBLOX_LOGO.to_string()),
         small_image: None,
-        button: None,
+        buttons: Vec::new(),
     }
 }
 

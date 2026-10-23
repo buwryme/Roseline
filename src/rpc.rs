@@ -33,8 +33,8 @@ pub struct Activity {
     pub started: u64,
     pub large_image: Option<String>,
     pub small_image: Option<String>,
-    /// deep link or game page opened by the presence button.
-    pub button: Option<Button>,
+    /// up to two deep-link or game-page buttons.
+    pub buttons: Vec<Button>,
 }
 
 /// connect, handshake and set the activity; `None` when Discord is absent,
@@ -72,8 +72,14 @@ impl Discord {
         if !assets.is_empty() {
             shown["assets"] = serde_json::Value::Object(assets);
         }
-        if let Some(button) = &activity.button {
-            shown["buttons"] = serde_json::json!([{ "label": button.label, "url": button.url }]);
+        if !activity.buttons.is_empty() {
+            let buttons: Vec<serde_json::Value> = activity
+                .buttons
+                .iter()
+                .take(2)
+                .map(|button| serde_json::json!({ "label": button.label, "url": button.url }))
+                .collect();
+            shown["buttons"] = serde_json::Value::Array(buttons);
         }
         let payload = serde_json::json!({
             "cmd": "SET_ACTIVITY",
@@ -164,17 +170,27 @@ mod tests {
             started: 1_700_000_000,
             large_image: Some("https://tr.rbxcdn.com/cover".into()),
             small_image: Some(ROBLOX_LOGO.into()),
-            button: Some(Button {
-                label: "Join Game",
-                url: "roblox://experiences/start?placeId=1&gameInstanceId=e42cc7b0-9b0a-4b7e-8f35-1c2d3e4f5a6b"
-                    .into(),
-            }),
+            buttons: vec![
+                Button {
+                    label: "Join Game",
+                    url: "https://buwryy.net/join-roseline-discord-rpc-handler.html?placeId=1&gameInstanceId=e42cc7b0-9b0a-4b7e-8f35-1c2d3e4f5a6b".into(),
+                },
+                Button {
+                    label: "View Game",
+                    url: "https://www.roblox.com/games/1".into(),
+                },
+            ],
         };
         assert_eq!(activity.details, "Blox Fruits");
         assert!(activity.large_image.is_some());
         assert!(activity.small_image.as_deref().unwrap().contains("Roblox"));
-        let button = activity.button.as_ref().unwrap();
-        assert_eq!(button.label, "Join Game");
-        assert!(button.url.starts_with("roblox://experiences/start?"));
+        assert_eq!(activity.buttons.len(), 2);
+        assert_eq!(activity.buttons[0].label, "Join Game");
+        assert!(
+            activity.buttons[0]
+                .url
+                .starts_with("https://buwryy.net/join-roseline-discord-rpc-handler.html?")
+        );
+        assert_eq!(activity.buttons[1].label, "View Game");
     }
 }
