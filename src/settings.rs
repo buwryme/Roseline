@@ -165,7 +165,7 @@ const HEADER: &str =
 impl Default for Discord {
     fn default() -> Discord {
         Discord {
-            enabled: true,
+            enabled: false,
             show_game: true,
             app_id: DEFAULT_APP_ID.to_string(),
             join_button: false,
@@ -219,7 +219,7 @@ mod tests {
         assert!(settings.fonts.font.is_none());
         assert!(settings.fonts.mono.is_none());
         assert!(settings.runner.is_none());
-        assert!(settings.discord.enabled);
+        assert!(!settings.discord.enabled);
         assert!(settings.discord.show_game);
         assert!(!settings.discord.join_button);
         assert!(settings.flags.is_empty());
