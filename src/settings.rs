@@ -148,7 +148,7 @@ impl Default for Discord {
             enabled: true,
             show_game: true,
             app_id: DEFAULT_APP_ID.to_string(),
-            join_button: true,
+            join_button: false,
             details: "Roblox".into(),
             state: "via Roséline".into(),
         }
@@ -199,7 +199,7 @@ mod tests {
         assert!(settings.runner.is_none());
         assert!(settings.discord.enabled);
         assert!(settings.discord.show_game);
-        assert!(settings.discord.join_button);
+        assert!(!settings.discord.join_button);
         assert!(settings.flags.is_empty());
         assert!(settings.environment.guest.is_empty());
         assert!(settings.environment.runner.is_empty());
