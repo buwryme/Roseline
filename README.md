@@ -7,7 +7,7 @@
 <p align="center">Run Roblox's macOS builds on Linux, through <a href="https://github.com/microlift/rosemary">Rosemary</a>.</p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/version-0.1.0-b23a48?style=flat-square" alt="version">
+  <img src="https://img.shields.io/badge/version-0.1.1-b23a48?style=flat-square" alt="version">
   <img src="https://img.shields.io/badge/license-GPL--3.0--or--later-6c7a57?style=flat-square" alt="license">
   <img src="https://img.shields.io/badge/GTK4-Libadwaita-7752cc?style=flat-square" alt="GTK4">
   <img src="https://img.shields.io/badge/Language-Rust-c1440e?style=flat-square" alt="Rust">
@@ -49,7 +49,7 @@ curl -fsSL https://buwryy.net/api/roseline/setup-script | bash
 ### non-interactive install:
 
 ```sh
-curl -fsSL https://buwryy.net/api/roseline/setup-script | bash -s -- --system --version v0.1.0 --yes
+curl -fsSL https://buwryy.net/api/roseline/setup-script | bash -s -- --system --version v0.1.1 --yes
 curl -fsSL https://buwryy.net/api/roseline/setup-script | bash -s -- --flatpak --latest --yes
 ```
 
@@ -71,11 +71,11 @@ travel with it; they are the user's, not the install's.
 Every recipe builds from this tree and drops its artifact in `build/`.
 
 ```sh
-sudo dnf install build/roseline-0.1.0-1.fc44.x86_64.rpm
-sudo apt install build/roseline_0.1.0_amd64.deb
-sudo pacman -U build/roseline-0.1.0-1-x86_64.pkg.tar.zst
-./build/Roseline-0.1.0-x86_64.AppImage
-tar -xJf build/roseline-0.1.0-x86_64.tar.xz -C /   # manual, /usr layout
+sudo dnf install build/roseline-0.1.1-1.fc44.x86_64.rpm
+sudo apt install build/roseline_0.1.1_amd64.deb
+sudo pacman -U build/roseline-0.1.1-1-x86_64.pkg.tar.zst
+./build/Roseline-0.1.1-x86_64.AppImage
+tar -xJf build/roseline-0.1.1-x86_64.tar.xz -C /   # manual, /usr layout
 ```
 
 The recipes live in `build-aux`:
@@ -123,7 +123,7 @@ which otherwise keeps shadowing the package's icon.
   the read-only / warn / recover policy for system files
 - Environment variables for both Rosemary itself, and the Roblox executable
 - fast flags, locked to Roblox's own allowlist, written before each launch
-- optional Discord Rich Presence, on by default, with Join Game and View Game buttons; joins open through the browser so Flatpak Discord clients can hand off to Roblox
+- optional Discord Rich Presence, off by default; enable it on the setup screen or in Settings, with Join Game and View Game buttons; joins open through the browser so Flatpak Discord clients can hand off to Roblox
 - only one instance can run to prevent potential bans!!!
 
 ## how it works
@@ -143,7 +143,6 @@ the manager. The runner and the MiniDarwin base stick close to
   Roblox can use. Everything else (including login) works.
 - x86_64 only
 - the Metal2Vulkan path might introduce more performance overhead than OpenGL, but notably provides better graphics
-- voice chat doesn't work: you can hear everyone else, but microphone input doesn't work. Rosemary-side issue.
 
 > [!IMPORTANT]
 > no modifications (whether it be exploits or such) to the client are done at all; only texture overrides that are optional.
