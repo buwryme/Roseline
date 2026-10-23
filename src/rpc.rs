@@ -18,6 +18,12 @@ pub const NAME: &str = "ROBLOX";
 /// itself, so a local `.icns` cannot be used.
 pub const ROBLOX_LOGO: &str = "https://upload.wikimedia.org/wikipedia/commons/thumb/f/f2/Roblox_%282025%29_%28App_Icon%29.svg/960px-Roblox_%282025%29_%28App_Icon%29.svg.png";
 
+/// one of the two links Discord shows under the presence.
+pub struct Button {
+    pub label: &'static str,
+    pub url: String,
+}
+
 /// what the profile shows; images are plain URLs, which is how the game's
 /// own cover gets there.
 pub struct Activity {
@@ -27,7 +33,8 @@ pub struct Activity {
     pub started: u64,
     pub large_image: Option<String>,
     pub small_image: Option<String>,
-    pub join_url: Option<String>,
+    /// deep link or game page opened by the presence button.
+    pub button: Option<Button>,
 }
 
 /// connect, handshake and set the activity; `None` when Discord is absent,
@@ -65,8 +72,8 @@ impl Discord {
         if !assets.is_empty() {
             shown["assets"] = serde_json::Value::Object(assets);
         }
-        if let Some(url) = &activity.join_url {
-            shown["buttons"] = serde_json::json!([{ "label": "Join Game", "url": url }]);
+        if let Some(button) = &activity.button {
+            shown["buttons"] = serde_json::json!([{ "label": button.label, "url": button.url }]);
         }
         let payload = serde_json::json!({
             "cmd": "SET_ACTIVITY",
@@ -157,17 +164,17 @@ mod tests {
             started: 1_700_000_000,
             large_image: Some("https://tr.rbxcdn.com/cover".into()),
             small_image: Some(ROBLOX_LOGO.into()),
-            join_url: Some("https://www.roblox.com/games/start?placeId=1".into()),
+            button: Some(Button {
+                label: "Join Game",
+                url: "roblox://experiences/start?placeId=1&gameInstanceId=e42cc7b0-9b0a-4b7e-8f35-1c2d3e4f5a6b"
+                    .into(),
+            }),
         };
         assert_eq!(activity.details, "Blox Fruits");
         assert!(activity.large_image.is_some());
         assert!(activity.small_image.as_deref().unwrap().contains("Roblox"));
-        assert!(
-            activity
-                .join_url
-                .as_deref()
-                .unwrap()
-                .starts_with("https://www.roblox.com/")
-        );
+        let button = activity.button.as_ref().unwrap();
+        assert_eq!(button.label, "Join Game");
+        assert!(button.url.starts_with("roblox://experiences/start?"));
     }
 }

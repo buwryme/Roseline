@@ -114,7 +114,7 @@ pub fn idle_activity(settings: &Settings) -> crate::rpc::Activity {
         started: now(),
         large_image: Some(crate::rpc::ROBLOX_LOGO.to_string()),
         small_image: None,
-        join_url: None,
+        button: None,
     }
 }
 
@@ -346,6 +346,18 @@ mod tests {
     }
 
     #[test]
+    fn deep_link_carries_the_server() {
+        let ids = parse_launch(
+            "roblox://experiences/start?placeId=4483381587&gameInstanceId=e42cc7b0-9b0a-4b7e-8f35-1c2d3e4f5a6b",
+        );
+        assert_eq!(ids.place_id, Some(4483381587));
+        assert_eq!(
+            ids.job_id.as_deref(),
+            Some("e42cc7b0-9b0a-4b7e-8f35-1c2d3e4f5a6b")
+        );
+    }
+
+    #[test]
     fn launch_ids_survive_percent_encoding() {
         let link = "roblox-player:1+launchmode:play+gameinfo:e42cc7b0-9b0a-4b7e-8f35-1c2d3e4f5a6b+launchtime:1+placelauncherurl:https%3A%2F%2Fassetgame.roblox.com%2Fgame%2FPlaceLauncher.ashx%3Frequest%3DRequestGame%26placeId%3D123%26gameId%3De42cc7b0-9b0a-4b7e-8f35-1c2d3e4f5a6b";
         let ids = parse_launch(link);
@@ -369,6 +381,20 @@ mod tests {
             arguments
                 .windows(2)
                 .any(|pair| pair[0] == "-placeId" && pair[1] == "99")
+        );
+        assert!(arguments.windows(2).any(|pair| pair[0] == "-gameInstanceId"
+            && pair[1] == "e42cc7b0-9b0a-4b7e-8f35-1c2d3e4f5a6b"));
+    }
+
+    #[test]
+    fn deep_links_are_passed_through() {
+        let link = "roblox://experiences/start?placeId=4483381587&gameInstanceId=e42cc7b0-9b0a-4b7e-8f35-1c2d3e4f5a6b";
+        let arguments = guest_arguments(Some(link), Path::new("/tmp/p"));
+        assert_eq!(arguments[1], link);
+        assert!(
+            arguments
+                .windows(2)
+                .any(|pair| pair[0] == "-placeId" && pair[1] == "4483381587")
         );
         assert!(arguments.windows(2).any(|pair| pair[0] == "-gameInstanceId"
             && pair[1] == "e42cc7b0-9b0a-4b7e-8f35-1c2d3e4f5a6b"));

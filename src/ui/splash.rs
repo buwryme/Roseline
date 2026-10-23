@@ -30,6 +30,16 @@ enum Phase {
     Running,
 }
 
+#[derive(Clone)]
+struct Game {
+    name: String,
+    cover_url: String,
+    join_url: String,
+    page_url: String,
+    private: bool,
+    started: u64,
+}
+
 #[derive(Default)]
 struct Inner {
     phase: Phase,
@@ -43,7 +53,7 @@ struct Inner {
     shown: f64,
     animation: Option<(Instant, f64)>,
     animating: bool,
-    game: Option<String>,
+    game: Option<Game>,
     started: Option<Instant>,
     rpc_attempts: u32,
 }
@@ -56,6 +66,13 @@ pub struct Splash {
     window: adw::ApplicationWindow,
     bar: gtk::ProgressBar,
     inner: RefCell<Inner>,
+}
+
+/// re-read the Discord settings and update the live presence.
+pub fn refresh_presence() {
+    if let Some(splash) = SPLASH.with(|slot| slot.borrow().clone()) {
+        splash.refresh_presence();
+    }
 }
 
 /// the way in: a desktop click, or a link.
@@ -448,6 +465,8 @@ impl Splash {
 
     fn resolve_game(self: &Rc<Self>, joining: session::Joining) {
         let join_url = joining.join_url();
+        let page_url = joining.page_url();
+        let private = joining.private;
         let (sender, receiver) = async_channel::bounded(1);
         std::thread::spawn(move || {
             let resolved = crate::gameinfo::resolve(joining.place_id).ok().map(|info| {
@@ -465,36 +484,74 @@ impl Splash {
             let Ok(Some((name, cover_url, _cover))) = receiver.recv().await else {
                 return;
             };
-            splash.show_game(name, cover_url, join_url);
+            splash.show_game(name, cover_url, join_url, page_url, private);
         });
     }
 
-    fn show_game(self: &Rc<Self>, name: String, cover_url: String, join_url: String) {
+    fn show_game(
+        self: &Rc<Self>,
+        name: String,
+        cover_url: String,
+        join_url: String,
+        page_url: String,
+        private: bool,
+    ) {
         if self.inner.borrow().phase != Phase::Running {
             return;
         }
         self.set_percent(100);
         self.complete();
 
+        let game = Game {
+            name,
+            cover_url,
+            join_url,
+            page_url,
+            private,
+            started: launch::now(),
+        };
+        self.inner.borrow_mut().game = Some(game.clone());
+
         let settings = Settings::load();
-        let join_button = settings.discord.join_button.then(|| join_url.clone());
-        let mut inner = self.inner.borrow_mut();
-        inner.game = Some(name.clone());
-        let pid = inner.pid;
-        if let (Some(rpc), Some(pid)) = (inner.rpc.as_mut(), pid) {
-            rpc.set(
-                pid,
-                &crate::rpc::Activity {
-                    details: name,
+        self.apply_presence(Some(&game), &settings);
+    }
+
+    /// the settings window changed a Discord toggle while a game is running.
+    fn refresh_presence(self: &Rc<Self>) {
+        let (phase, game) = {
+            let inner = self.inner.borrow();
+            (inner.phase, inner.game.clone())
+        };
+        if phase != Phase::Running {
+            return;
+        }
+        let settings = Settings::load();
+        self.apply_presence(game.as_ref(), &settings);
+    }
+
+    fn apply_presence(self: &Rc<Self>, game: Option<&Game>, settings: &Settings) {
+        let activity = if settings.discord.show_game {
+            if let Some(game) = game {
+                crate::rpc::Activity {
+                    details: game.name.clone(),
                     state: settings.discord.state.clone(),
-                    started: launch::now(),
-                    large_image: (!cover_url.is_empty())
-                        .then_some(cover_url)
+                    started: game.started,
+                    large_image: (!game.cover_url.is_empty())
+                        .then(|| game.cover_url.clone())
                         .or_else(|| Some(crate::rpc::ROBLOX_LOGO.to_string())),
                     small_image: Some(crate::rpc::ROBLOX_LOGO.to_string()),
-                    join_url: join_button,
-                },
-            );
+                    button: Some(game_button(settings.discord.join_button, game)),
+                }
+            } else {
+                launch::idle_activity(settings)
+            }
+        } else {
+            launch::idle_activity(settings)
+        };
+        let mut inner = self.inner.borrow_mut();
+        let pid = inner.pid;
+        if let (Some(rpc), Some(pid)) = (inner.rpc.as_mut(), pid) {
+            rpc.set(pid, &activity);
         }
     }
 
@@ -539,6 +596,20 @@ impl Splash {
         SPLASH.with(|slot| *slot.borrow_mut() = None);
         if pid.is_some() && closed.is_none() && early {
             early_exit_dialog();
+        }
+    }
+}
+
+fn game_button(join_enabled: bool, game: &Game) -> crate::rpc::Button {
+    if join_enabled && !game.private {
+        crate::rpc::Button {
+            label: "Join Game",
+            url: game.join_url.clone(),
+        }
+    } else {
+        crate::rpc::Button {
+            label: "View Game",
+            url: game.page_url.clone(),
         }
     }
 }
@@ -713,5 +784,32 @@ mod tests {
         let bytes = b"\x89PNG\r\n\x1a\nwhatever";
         assert_eq!(png_inside(bytes).unwrap(), bytes);
         assert!(png_inside(b"not an icon").is_none());
+    }
+
+    #[test]
+    fn join_button_falls_back_to_view_game() {
+        let game = Game {
+            name: "Blox Fruits".into(),
+            cover_url: String::new(),
+            join_url: "roblox://experiences/start?placeId=1&gameInstanceId=abc".into(),
+            page_url: "https://www.roblox.com/games/1".into(),
+            private: false,
+            started: 0,
+        };
+        let join = game_button(true, &game);
+        assert_eq!(join.label, "Join Game");
+        assert!(join.url.starts_with("roblox://"));
+
+        let view = game_button(false, &game);
+        assert_eq!(view.label, "View Game");
+        assert_eq!(view.url, "https://www.roblox.com/games/1");
+
+        let private = Game {
+            private: true,
+            ..game
+        };
+        let fallback = game_button(true, &private);
+        assert_eq!(fallback.label, "View Game");
+        assert_eq!(fallback.url, "https://www.roblox.com/games/1");
     }
 }

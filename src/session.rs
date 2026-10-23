@@ -14,20 +14,27 @@ use crate::config::Paths;
 pub struct Joining {
     pub place_id: u64,
     pub job_id: String,
+    /// private servers cannot be joined with a deep link; use the game page.
+    pub private: bool,
 }
 
 impl Joining {
-    /// web link that starts this server; Discord buttons only take http(s).
+    /// deep link that starts this server; Discord buttons carry it as-is.
     pub fn join_url(&self) -> String {
         format!(
-            "https://www.roblox.com/games/start?placeId={}&gameInstanceId={}",
+            "roblox://experiences/start?placeId={}&gameInstanceId={}",
             self.place_id, self.job_id
         )
+    }
+
+    /// the game's public page, for the View Game button.
+    pub fn page_url(&self) -> String {
+        format!("https://www.roblox.com/games/{}", self.place_id)
     }
 }
 
 pub enum Event {
-    /// a join line appeared; the name and cover still need fetching.
+    /// the server is actually joined; the name and cover still need fetching.
     Joining(Joining),
     /// a startup milestone, as a percentage and a caption.
     Progress(u8, &'static str),
@@ -35,10 +42,17 @@ pub enum Event {
     Left,
 }
 
+struct Pending {
+    place_id: u64,
+    job_id: String,
+    private: bool,
+}
+
 pub struct Session {
     started: SystemTime,
     log: Option<PathBuf>,
     offset: u64,
+    pending: Option<Pending>,
 }
 
 impl Session {
@@ -47,6 +61,7 @@ impl Session {
             started: SystemTime::now(),
             log: None,
             offset: 0,
+            pending: None,
         }
     }
 
@@ -59,13 +74,30 @@ impl Session {
         for line in text.lines() {
             if line.contains("! Joining game '") {
                 if let Some((job_id, place_id)) = parse_join(line) {
-                    events.push(Event::Joining(Joining { place_id, job_id }));
+                    self.pending = Some(Pending {
+                        place_id,
+                        job_id,
+                        private: false,
+                    });
+                }
+            } else if private_referral(line) {
+                if let Some(pending) = self.pending.as_mut() {
+                    pending.private = true;
                 }
             } else if line.contains("Replicator created:") {
+                // by now the join-time referral has told us public vs private.
+                if let Some(pending) = self.pending.take() {
+                    events.push(Event::Joining(Joining {
+                        place_id: pending.place_id,
+                        job_id: pending.job_id,
+                        private: pending.private,
+                    }));
+                }
                 events.push(Event::Progress(97, "Joining the server"));
             } else if line.contains("Time to disconnect replication data:")
                 || line.contains("leaveUGCGameInternal")
             {
+                self.pending = None;
                 events.push(Event::Left);
             } else if line.contains("applicationDidFinishLaunching") {
                 events.push(Event::Progress(62, "Roblox is starting"));
@@ -159,6 +191,12 @@ fn parse_join(line: &str) -> Option<(String, u64)> {
     (job_id.len() == 36).then(|| (job_id.to_string(), place_id))
 }
 
+/// a private server join names its referral in the join-load-time line.
+fn private_referral(line: &str) -> bool {
+    line.contains("referral_page:")
+        && (line.contains("RequestPrivateGame") || line.contains("GameDetailPageJSHybridEvent"))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -178,14 +216,33 @@ mod tests {
     }
 
     #[test]
-    fn join_url_is_a_web_link() {
+    fn join_url_is_a_deep_link() {
         let joining = Joining {
             place_id: 4483381587,
             job_id: "e42cc7b0-9b0a-4b7e-8f35-1c2d3e4f5a6b".into(),
+            private: false,
         };
         assert_eq!(
             joining.join_url(),
-            "https://www.roblox.com/games/start?placeId=4483381587&gameInstanceId=e42cc7b0-9b0a-4b7e-8f35-1c2d3e4f5a6b"
+            "roblox://experiences/start?placeId=4483381587&gameInstanceId=e42cc7b0-9b0a-4b7e-8f35-1c2d3e4f5a6b"
         );
+        assert_eq!(
+            joining.page_url(),
+            "https://www.roblox.com/games/4483381587"
+        );
+    }
+
+    #[test]
+    fn private_referrals_are_detected() {
+        assert!(private_referral(
+            "[FLog::GameJoinLoadTime] Report game_join_loadtime: referral_page:RequestPrivateGame,foo"
+        ));
+        assert!(private_referral(
+            "[FLog::GameJoinLoadTime] Report game_join_loadtime: referral_page:GameDetailPageJSHybridEvent,foo"
+        ));
+        assert!(!private_referral(
+            "[FLog::GameJoinLoadTime] Report game_join_loadtime: referral_page:GameDetailPage,foo"
+        ));
+        assert!(!private_referral("[FLog::Output] nothing to see"));
     }
 }

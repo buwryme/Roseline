@@ -125,6 +125,8 @@ pub struct Environment {
 #[serde(default)]
 pub struct Discord {
     pub enabled: bool,
+    /// whether the game itself is shown; off leaves the idle Roblox presence.
+    pub show_game: bool,
     /// Discord application id; Rich Presence stays off while empty.
     pub app_id: String,
     /// a Join Game button that opens the server the user is on.
@@ -144,6 +146,7 @@ impl Default for Discord {
     fn default() -> Discord {
         Discord {
             enabled: true,
+            show_game: true,
             app_id: DEFAULT_APP_ID.to_string(),
             join_button: true,
             details: "Roblox".into(),
@@ -195,6 +198,7 @@ mod tests {
         assert_eq!(settings.prefix.system_files, SystemFiles::Repair);
         assert!(settings.runner.is_none());
         assert!(settings.discord.enabled);
+        assert!(settings.discord.show_game);
         assert!(settings.discord.join_button);
         assert!(settings.flags.is_empty());
         assert!(settings.environment.guest.is_empty());

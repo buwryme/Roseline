@@ -67,20 +67,45 @@ pub fn build() -> adw::PreferencesPage {
     ));
     group.add(&details);
 
+    let show = adw::SwitchRow::builder()
+        .title("Show Game")
+        .subtitle("Show the game you're in. Off only shows that Roblox is open.")
+        .active(settings.borrow().discord.show_game)
+        .build();
+    show.add_prefix(&row_prefix("applications-games-symbolic"));
+
     let join = adw::SwitchRow::builder()
-        .title("Let people join")
-        .subtitle("Puts a Join Game button on the presence that opens your server.")
+        .title("Let People Join")
+        .subtitle(
+            "Puts a Join Game button on public servers. Private servers get View Game instead.",
+        )
         .active(settings.borrow().discord.join_button)
+        .sensitive(settings.borrow().discord.show_game)
         .build();
     join.add_prefix(&row_prefix("system-users-symbolic"));
+
+    show.connect_active_notify(glib::clone!(
+        #[strong]
+        settings,
+        #[strong]
+        join,
+        move |row| {
+            settings.borrow_mut().discord.show_game = row.is_active();
+            let _ = settings.borrow().save();
+            join.set_sensitive(row.is_active());
+            crate::ui::splash::refresh_presence();
+        }
+    ));
     join.connect_active_notify(glib::clone!(
         #[strong]
         settings,
         move |row| {
             settings.borrow_mut().discord.join_button = row.is_active();
             let _ = settings.borrow().save();
+            crate::ui::splash::refresh_presence();
         }
     ));
+    group.add(&show);
     group.add(&join);
 
     let state = adw::EntryRow::builder()
