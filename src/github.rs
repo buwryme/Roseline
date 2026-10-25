@@ -38,7 +38,11 @@ impl Release {
 
     /// the Steam tool archive for this architecture; `.tar.zst` first.
     pub fn steam_tool(&self) -> Option<&Asset> {
-        let arch = std::env::consts::ARCH;
+        self.steam_tool_for(std::env::consts::ARCH)
+    }
+
+    /// the Steam tool archive built for `arch`; `.tar.zst` first.
+    pub fn steam_tool_for(&self, arch: &str) -> Option<&Asset> {
         ["tar.zst", "tar.gz"].iter().find_map(|extension| {
             let suffix = format!("-{arch}.{extension}");
             self.assets.iter().find(|asset| {
@@ -117,36 +121,56 @@ mod tests {
         }
     }
 
+    /// the architecture this test build is not, so a wrong pick shows.
+    fn other_arch() -> &'static str {
+        match std::env::consts::ARCH {
+            "aarch64" => "x86_64",
+            _ => "aarch64",
+        }
+    }
+
     #[test]
     fn picks_the_smallest_steam_tool() {
+        let arch = std::env::consts::ARCH;
+        let other = other_arch();
         let release = Release {
             tag_name: "v9.9.9".into(),
             name: None,
             draft: false,
             prerelease: false,
             assets: vec![
-                asset("rosemary-steam-tool-9.9.9-aarch64.tar.zst"),
-                asset("rosemary-steam-tool-9.9.9-x86_64.tar.gz"),
-                asset("rosemary-steam-tool-9.9.9-x86_64.tar.zst"),
+                asset(&format!("rosemary-steam-tool-9.9.9-{other}.tar.zst")),
+                asset(&format!("rosemary-steam-tool-9.9.9-{arch}.tar.gz")),
+                asset(&format!("rosemary-steam-tool-9.9.9-{arch}.tar.zst")),
                 asset("SHA256SUMS"),
             ],
         };
         let tool = release.steam_tool().unwrap();
-        assert_eq!(tool.name, "rosemary-steam-tool-9.9.9-x86_64.tar.zst");
+        assert_eq!(
+            tool.name,
+            format!("rosemary-steam-tool-9.9.9-{arch}.tar.zst")
+        );
     }
 
     #[test]
     fn prefers_zstd_but_takes_gzip() {
+        let arch = std::env::consts::ARCH;
         let release = Release {
             tag_name: "v9.9.9".into(),
             name: None,
             draft: false,
             prerelease: false,
-            assets: vec![asset("rosemary-steam-tool-9.9.9-x86_64.tar.gz")],
+            assets: vec![
+                asset(&format!(
+                    "rosemary-steam-tool-9.9.9-{}.tar.zst",
+                    other_arch()
+                )),
+                asset(&format!("rosemary-steam-tool-9.9.9-{arch}.tar.gz")),
+            ],
         };
         assert_eq!(
             release.steam_tool().unwrap().name,
-            "rosemary-steam-tool-9.9.9-x86_64.tar.gz"
+            format!("rosemary-steam-tool-9.9.9-{arch}.tar.gz")
         );
     }
 

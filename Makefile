@@ -1,6 +1,7 @@
 PREFIX ?= /usr/local
 VERSION := 0.1.1-hotfix1
 PKG_VERSION := $(subst -,.,$(VERSION))
+ARCH ?= $(shell uname -m)
 CARGO ?= cargo
 STAGING := $(CURDIR)/build/stage
 
@@ -45,6 +46,7 @@ uninstall:
 dist:
 	mkdir -p build
 	tar --exclude=./target --exclude=./build --exclude-vcs \
+	    --exclude=./obsidian --exclude=./.claude \
 	    --transform 's,^\.,roseline-$(PKG_VERSION),' \
 	    -czf build/roseline-$(PKG_VERSION).tar.gz .
 
@@ -53,7 +55,7 @@ dist-bin:
 	rm -rf "$(STAGING)"
 	$(MAKE) install DESTDIR="$(STAGING)" PREFIX=/usr
 	strip --strip-unneeded "$(STAGING)/usr/bin/roseline" || true
-	tar -C "$(STAGING)" -cJf build/roseline-$(VERSION)-x86_64.tar.xz .
+	tar -C "$(STAGING)" -cJf build/roseline-$(VERSION)-$(ARCH).tar.xz .
 	rm -rf "$(STAGING)"
 
 # an arch package; build-aux/PKGBUILD is the native route

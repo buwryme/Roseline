@@ -159,16 +159,30 @@ jobs:
           } >> "$GITHUB_OUTPUT"
 
   arch:
-    name: Arch package
+    name: Arch package (${{ matrix.arch }})
     needs: validate
     if: ${{ inputs.build_arch }}
-    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: x86_64
+            runner: ubuntu-latest
+            image: archlinux:latest
+          # Arch Linux ARM publishes no official image
+          - arch: aarch64
+            runner: ubuntu-24.04-arm
+            image: menci/archlinuxarm:latest
+    runs-on: ${{ matrix.runner }}
     timeout-minutes: 90
-    container: archlinux:latest
+    container: ${{ matrix.image }}
     defaults:
       run:
         shell: bash
     steps:
+      - name: Initialise the Arch Linux ARM keyring
+        if: ${{ matrix.arch == 'aarch64' }}
+        run: pacman-key --init && pacman-key --populate archlinuxarm
       - name: Install git for checkout
         run: pacman -Syu --noconfirm --needed git
       - uses: actions/checkout@v7
@@ -190,15 +204,21 @@ jobs:
           ls -l build/*.pkg.tar.zst
       - uses: actions/upload-artifact@v7
         with:
-          name: arch
-          path: build/roseline-${{ needs.validate.outputs.package_version }}-1-x86_64.pkg.tar.zst
+          name: arch-${{ matrix.arch }}
+          path: build/roseline-${{ needs.validate.outputs.package_version }}-1-${{ matrix.arch }}.pkg.tar.zst
           if-no-files-found: error
 
   rpm:
-    name: Fedora RPM
+    name: Fedora RPM (${{ matrix.arch }})
     needs: validate
     if: ${{ inputs.build_rpm }}
-    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { arch: x86_64, runner: ubuntu-latest }
+          - { arch: aarch64, runner: ubuntu-24.04-arm }
+    runs-on: ${{ matrix.runner }}
     timeout-minutes: 90
     container: fedora:latest
     defaults:
@@ -222,19 +242,25 @@ jobs:
           cp "build/roseline-$PKG_VERSION.tar.gz" rpmbuild/SOURCES/
           sed "s/^Version:.*/Version:        $PKG_VERSION/" build-aux/roseline.spec > rpmbuild/SPECS/roseline.spec
           rpmbuild --define "_topdir $PWD/rpmbuild" -bb rpmbuild/SPECS/roseline.spec
-          cp rpmbuild/RPMS/x86_64/*.rpm build/
+          cp rpmbuild/RPMS/*/*.rpm build/
           ls -l build/*.rpm
       - uses: actions/upload-artifact@v7
         with:
-          name: rpm
+          name: rpm-${{ matrix.arch }}
           path: build/*.rpm
           if-no-files-found: error
 
   deb:
-    name: Debian package
+    name: Debian package (${{ matrix.arch }})
     needs: validate
     if: ${{ inputs.build_deb }}
-    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { arch: x86_64, runner: ubuntu-latest }
+          - { arch: aarch64, runner: ubuntu-24.04-arm }
+    runs-on: ${{ matrix.runner }}
     timeout-minutes: 90
     container: ubuntu:24.04
     defaults:
@@ -258,15 +284,21 @@ jobs:
           ls -l build/*.deb
       - uses: actions/upload-artifact@v7
         with:
-          name: deb
+          name: deb-${{ matrix.arch }}
           path: build/*.deb
           if-no-files-found: error
 
   appimage:
-    name: AppImage
+    name: AppImage (${{ matrix.arch }})
     needs: validate
     if: ${{ inputs.build_appimage }}
-    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { arch: x86_64, runner: ubuntu-latest }
+          - { arch: aarch64, runner: ubuntu-24.04-arm }
+    runs-on: ${{ matrix.runner }}
     timeout-minutes: 90
     container: ubuntu:24.04
     defaults:
@@ -290,15 +322,21 @@ jobs:
           ls -l build/*.AppImage
       - uses: actions/upload-artifact@v7
         with:
-          name: appimage
+          name: appimage-${{ matrix.arch }}
           path: build/*.AppImage
           if-no-files-found: error
 
   flatpak:
-    name: Flatpak
+    name: Flatpak (${{ matrix.arch }})
     needs: validate
     if: ${{ inputs.build_flatpak }}
-    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { arch: x86_64, runner: ubuntu-latest }
+          - { arch: aarch64, runner: ubuntu-24.04-arm }
+    runs-on: ${{ matrix.runner }}
     timeout-minutes: 120
     container:
       image: ghcr.io/flathub-infra/flatpak-github-actions:gnome-51
@@ -321,9 +359,10 @@ jobs:
       - name: Build bundle
         uses: flatpak/flatpak-github-actions/flatpak-builder@v6
         with:
-          bundle: Roseline-${{ needs.validate.outputs.version }}-x86_64.flatpak
+          bundle: Roseline-${{ needs.validate.outputs.version }}-${{ matrix.arch }}.flatpak
           manifest-path: build-aux/net.buwryy.Roseline.yml
-          cache-key: roseline-flatpak-${{ inputs.commit }}
+          arch: ${{ matrix.arch }}
+          cache-key: roseline-flatpak-${{ matrix.arch }}-${{ inputs.commit }}
           upload-artifact: "false"
       - name: Stage bundle
         run: |
@@ -333,15 +372,21 @@ jobs:
           ls -l build/*.flatpak
       - uses: actions/upload-artifact@v7
         with:
-          name: flatpak
+          name: flatpak-${{ matrix.arch }}
           path: build/*.flatpak
           if-no-files-found: error
 
   nix:
-    name: Nix build
+    name: Nix build (${{ matrix.arch }})
     needs: validate
     if: ${{ inputs.build_nix }}
-    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { arch: x86_64, runner: ubuntu-latest }
+          - { arch: aarch64, runner: ubuntu-24.04-arm }
+    runs-on: ${{ matrix.runner }}
     timeout-minutes: 120
     steps:
       - uses: actions/checkout@v7
@@ -361,11 +406,11 @@ jobs:
           nix build .#roseline --print-build-logs
           mkdir -p build/nix
           cp -a result/. build/nix/
-          tar -C build/nix -cJf "build/roseline-$VERSION-x86_64-nix.tar.xz" .
+          tar -C build/nix -cJf "build/roseline-$VERSION-${{ matrix.arch }}-nix.tar.xz" .
           ls -l build/*nix.tar.xz
       - uses: actions/upload-artifact@v7
         with:
-          name: nix
+          name: nix-${{ matrix.arch }}
           path: build/*nix.tar.xz
           if-no-files-found: error
 
@@ -436,21 +481,29 @@ jobs:
             fi
           }
 
-          maybe_require "$BUILD_ARCH" "roseline-$PKG_VERSION-1-x86_64.pkg.tar.zst"
-          maybe_require "$BUILD_RPM" "roseline-$PKG_VERSION-1.*.x86_64.rpm"
-          maybe_require "$BUILD_DEB" "roseline_${VERSION}_amd64.deb"
-          maybe_require "$BUILD_FLATPAK" "Roseline-$VERSION-x86_64.flatpak"
-          maybe_require "$BUILD_APPIMAGE" "Roseline-$VERSION-x86_64.AppImage"
-          maybe_require "$BUILD_NIX" "roseline-$VERSION-x86_64-nix.tar.xz"
+          for arch in x86_64 aarch64; do
+            case "$arch" in
+              x86_64) deb_arch=amd64 ;;
+              aarch64) deb_arch=arm64 ;;
+            esac
+            maybe_require "$BUILD_ARCH" "roseline-$PKG_VERSION-1-$arch.pkg.tar.zst"
+            maybe_require "$BUILD_RPM" "roseline-$PKG_VERSION-1.*.$arch.rpm"
+            maybe_require "$BUILD_DEB" "roseline_${VERSION}_$deb_arch.deb"
+            maybe_require "$BUILD_FLATPAK" "Roseline-$VERSION-$arch.flatpak"
+            maybe_require "$BUILD_APPIMAGE" "Roseline-$VERSION-$arch.AppImage"
+            maybe_require "$BUILD_NIX" "roseline-$VERSION-$arch-nix.tar.xz"
 
+            if [ -n "${REUSE_RUN:-}" ]; then
+              require "roseline-$PKG_VERSION-1-$arch.pkg.tar.zst"
+              require "roseline-$PKG_VERSION-1.*.$arch.rpm"
+              require "roseline_${VERSION}_$deb_arch.deb"
+              require "Roseline-$VERSION-$arch.flatpak"
+              require "Roseline-$VERSION-$arch.AppImage"
+              require "roseline-$VERSION-$arch-nix.tar.xz"
+            fi
+          done
           if [ -n "${REUSE_RUN:-}" ]; then
             echo "reused run ids: $REUSE_RUN"
-            require "roseline-$PKG_VERSION-1-x86_64.pkg.tar.zst"
-            require "roseline-$PKG_VERSION-1.*.x86_64.rpm"
-            require "roseline_${VERSION}_amd64.deb"
-            require "Roseline-$VERSION-x86_64.flatpak"
-            require "Roseline-$VERSION-x86_64.AppImage"
-            require "roseline-$VERSION-x86_64-nix.tar.xz"
           fi
       - name: Create the GitHub release
         env:

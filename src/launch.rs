@@ -6,6 +6,7 @@
 //! mirror Butter's `shortcuts.rs` (GPL-3.0-or-later, the Microlift
 //! contributors).
 
+use std::ffi::OsString;
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
 
@@ -41,30 +42,57 @@ pub fn run(
     if set_runner(&mut settings, &runner_id) {
         settings.save()?;
     }
+    // a missing muvm, or a VM someone else holds, stops the launch here
+    // rather than after the client download.
+    if let Some((_, binary)) = paths.runner_selected(settings.runner.as_deref()) {
+        crate::muvm::route(
+            crate::rosemary::runner_dir(&binary)?,
+            settings.compatibility.muvm,
+        )?;
+    }
     prepare_bottle(progress, &settings)?;
 
     progress.stage("Starting Roblox");
     let (_, binary) = paths
         .runner_selected(settings.runner.as_deref())
         .context("the Rosemary runner disappeared mid-launch")?;
-    let runner_dir = binary
-        .parent()
-        .and_then(Path::parent)
-        .context("the Rosemary runner has no directory")?;
+    let runner_dir = crate::rosemary::runner_dir(&binary)?;
     crate::runner::refresh_launcher(runner_dir)?;
+    let through_vm = crate::muvm::route(runner_dir, settings.compatibility.muvm)?;
     std::fs::create_dir_all(paths.logs())?;
     let started = now();
     let log_path = paths.logs().join(format!("launch-{started}.log"));
-    let log = std::fs::File::create(&log_path)?;
+    let log = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(&log_path)?;
     let error_log = log.try_clone()?;
 
-    let mut command = Command::new(binary);
+    let mut arguments: Vec<OsString> = vec!["run".into(), paths.app_bundle().into()];
+    arguments.extend(
+        guest_arguments(uri, &paths.prefix())
+            .into_iter()
+            .map(OsString::from),
+    );
+    let mut command = if through_vm {
+        // the VM writes the log itself; muvm passes no output back.
+        crate::muvm::command(
+            &binary,
+            &arguments,
+            &environment(&settings),
+            &paths.app(),
+            &log_path,
+            settings.compatibility.vm_memory,
+        )?
+    } else {
+        let mut command = Command::new(&binary);
+        command
+            .args(&arguments)
+            .envs(environment(&settings))
+            .current_dir(paths.app());
+        command
+    };
     command
-        .arg("run")
-        .arg(paths.app_bundle())
-        .args(guest_arguments(uri, &paths.prefix()))
-        .envs(environment(&settings))
-        .current_dir(paths.app())
         .stdin(Stdio::null())
         .stdout(Stdio::from(log))
         .stderr(Stdio::from(error_log));
@@ -163,9 +191,8 @@ fn ensure_prefix(progress: &Progress, settings: &Settings) -> Result<()> {
         return Ok(());
     }
     progress.stage("Creating the prefix and downloading the Darwin base");
-    let mut command = crate::rosemary::create_command(settings)?;
     let log = paths.logs().join("prefix-create.log");
-    let status = crate::util::run_logged(&mut command, &log)?;
+    let status = crate::rosemary::create(settings, &log)?;
     if !status.success() {
         bail!("the prefix could not be created; see {}", log.display());
     }

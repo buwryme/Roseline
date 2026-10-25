@@ -8,6 +8,7 @@ mod github;
 mod gpu;
 mod icons;
 mod launch;
+mod muvm;
 mod net;
 mod overlay;
 mod progress;

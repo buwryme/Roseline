@@ -46,6 +46,9 @@ rustPlatform.buildRustPackage {
     homepage = "https://github.com/buwryme/Roseline";
     license = lib.licenses.gpl3Plus;
     mainProgram = "roseline";
-    platforms = [ "x86_64-linux" ];
+    platforms = [
+      "x86_64-linux"
+      "aarch64-linux"
+    ];
   };
 }

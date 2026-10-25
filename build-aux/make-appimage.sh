@@ -7,6 +7,7 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 
 version="$(sed -n 's/^version = "\(.*\)"/\1/p' Cargo.toml | head -1)"
+arch="${ARCH:-$(uname -m)}"
 appdir="build/AppDir"
 tools="build/tools"
 mkdir -p "$appdir/usr/bin" "$appdir/usr/lib" "$appdir/usr/share/applications" \
@@ -65,12 +66,12 @@ while read -r line; do
     esac
 done < <(ldd target/release/roseline)
 
-if [ ! -x "$tools/appimagetool" ]; then
-    curl -L -o "$tools/appimagetool" \
-        https://github.com/AppImage/appimagetool/releases/download/continuous/appimagetool-x86_64.AppImage
-    chmod +x "$tools/appimagetool"
+if [ ! -x "$tools/appimagetool-$arch" ]; then
+    curl -fL --retry 3 -o "$tools/appimagetool-$arch" \
+        "https://github.com/AppImage/appimagetool/releases/download/continuous/appimagetool-${arch}.AppImage"
+    chmod +x "$tools/appimagetool-$arch"
 fi
 
-ARCH=x86_64 "$tools/appimagetool" --appimage-extract-and-run \
-    "$appdir" "build/Roseline-${version}-x86_64.AppImage"
-echo "built build/Roseline-${version}-x86_64.AppImage"
+ARCH="$arch" "$tools/appimagetool-$arch" --appimage-extract-and-run \
+    "$appdir" "build/Roseline-${version}-${arch}.AppImage"
+echo "built build/Roseline-${version}-${arch}.AppImage"

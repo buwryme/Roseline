@@ -31,7 +31,7 @@ fi
 
 here=${0%/*}
 root=$here/../Rosemary
-loader=$root/glibc/lib/ld-linux-x86-64.so.2
+loader=$root/glibc/lib/@LOADER@
 named_loader=$root/glibc/lib/Roseline
 
 # a runner update restores the real loader, so redo this every launch
@@ -147,12 +147,10 @@ pub fn install(release: &Release, progress: &Progress) -> Result<String> {
         return Ok(id);
     }
 
-    let asset = release.steam_tool().with_context(|| {
-        format!(
-            "Rosemary {} has no official build for this architecture",
-            release.tag_name
-        )
-    })?;
+    let asset = match release.steam_tool() {
+        Some(asset) => asset,
+        None => emulated_tool(release)?,
+    };
     let expected = match asset.sha256() {
         Some(hash) => hash,
         None => {
@@ -202,6 +200,37 @@ pub fn install(release: &Release, progress: &Progress) -> Result<String> {
     Ok(id)
 }
 
+/// the x86_64 build, for an aarch64 host that runs it through muvm.
+fn emulated_tool(release: &Release) -> Result<&crate::github::Asset> {
+    let arch = std::env::consts::ARCH;
+    let foreign = (arch == "aarch64")
+        .then(|| release.steam_tool_for("x86_64"))
+        .flatten();
+    let Some(asset) = foreign else {
+        bail!(
+            "Rosemary {} has no official build for {arch}",
+            release.tag_name
+        );
+    };
+    if !crate::settings::Settings::load().compatibility.muvm {
+        bail!(
+            "Rosemary {} has no native ARM64 build and ARM64 compatibility is disabled; enable it in Advanced settings to use muvm",
+            release.tag_name
+        );
+    }
+    if crate::rpc::sandboxed() {
+        bail!("{}", crate::muvm::missing_hint());
+    }
+    if !crate::muvm::available() {
+        bail!(
+            "Rosemary {} has no {arch} build, and its x86_64 one runs through muvm; {}",
+            release.tag_name,
+            crate::muvm::missing_hint()
+        );
+    }
+    Ok(asset)
+}
+
 /// rewrite the launcher, so an updated script reaches installed runners.
 pub fn refresh_launcher(dir: &Path) -> Result<()> {
     write_launcher(dir)
@@ -212,9 +241,24 @@ fn write_launcher(dir: &Path) -> Result<()> {
     if let Some(parent) = path.parent() {
         std::fs::create_dir_all(parent)?;
     }
-    std::fs::write(&path, BINARY_LAUNCHER)?;
+    let arch = crate::muvm::runner_arch(dir).unwrap_or(std::env::consts::ARCH);
+    std::fs::write(&path, launcher_script(arch))?;
     std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o755))?;
     Ok(())
+}
+
+/// the launcher with the runner's glibc loader filled in.
+fn launcher_script(arch: &str) -> String {
+    BINARY_LAUNCHER.replace("@LOADER@", loader_name(arch))
+}
+
+/// the dynamic loader Rosemary's bundled glibc ships for a runner of `arch`;
+/// under muvm that is not the host's.
+fn loader_name(arch: &str) -> &'static str {
+    match arch {
+        "aarch64" => "ld-linux-aarch64.so.1",
+        _ => "ld-linux-x86-64.so.2",
+    }
 }
 
 /// unpack a Steam tool into `dest`; entries that would land outside it are
@@ -264,6 +308,18 @@ mod tests {
             Some("v0.3.0")
         );
         assert_eq!(tag_of("something-else"), None);
+    }
+
+    #[test]
+    fn launcher_names_the_runners_loader() {
+        for (arch, loader) in [
+            ("x86_64", "ld-linux-x86-64.so.2"),
+            ("aarch64", "ld-linux-aarch64.so.1"),
+        ] {
+            let script = launcher_script(arch);
+            assert!(!script.contains("@LOADER@"));
+            assert!(script.contains(&format!("loader=$root/glibc/lib/{loader}\n")));
+        }
     }
 
     #[test]

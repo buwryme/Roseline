@@ -167,6 +167,17 @@ mod tests {
         }
         let (id, _) = paths.runner().unwrap();
         assert_eq!(id, "rosemary-v0.10.0-official");
+        assert_eq!(
+            paths
+                .runner_selected(Some("rosemary-v0.2.1-official"))
+                .unwrap()
+                .0,
+            "rosemary-v0.2.1-official"
+        );
+        assert_eq!(
+            paths.runner_selected(Some("missing")).unwrap().0,
+            "rosemary-v0.10.0-official"
+        );
         let _ = std::fs::remove_dir_all(&root);
     }
 }
