@@ -13,6 +13,7 @@ use crate::config::Paths;
 #[serde(default)]
 pub struct Settings {
     pub graphics: Graphics,
+    pub compatibility: Compatibility,
     pub prefix: Prefix,
     #[serde(default, skip_serializing_if = "Fonts::is_empty")]
     pub fonts: Fonts,
@@ -22,6 +23,57 @@ pub struct Settings {
     pub flags: BTreeMap<String, String>,
     pub discord: Discord,
     pub environment: Environment,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(default)]
+pub struct Compatibility {
+    /// Allow x86_64 runners through muvm on ARM64 hosts.
+    pub muvm: bool,
+    pub vm_memory: VmMemory,
+}
+
+impl Default for Compatibility {
+    fn default() -> Self {
+        Self {
+            muvm: cfg!(target_arch = "aarch64"),
+            vm_memory: VmMemory::Auto,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum VmMemory {
+    #[serde(rename = "auto")]
+    Auto,
+    #[serde(rename = "4-gib")]
+    FourGiB,
+    #[serde(rename = "6-gib")]
+    SixGiB,
+    #[serde(rename = "8-gib")]
+    EightGiB,
+}
+
+impl VmMemory {
+    pub const ALL: [Self; 4] = [Self::Auto, Self::FourGiB, Self::SixGiB, Self::EightGiB];
+
+    pub fn mib(self) -> Option<u32> {
+        match self {
+            Self::Auto => None,
+            Self::FourGiB => Some(4096),
+            Self::SixGiB => Some(6144),
+            Self::EightGiB => Some(8192),
+        }
+    }
+
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::Auto => "muvm default",
+            Self::FourGiB => "4 GiB",
+            Self::SixGiB => "6 GiB",
+            Self::EightGiB => "8 GiB",
+        }
+    }
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
@@ -249,6 +301,19 @@ mod tests {
         assert_eq!(settings.graphics.backend, Backend::OpenGL);
         let text = toml::to_string(&Settings::default()).unwrap();
         assert!(text.contains("backend = \"auto\""));
+    }
+
+    #[test]
+    fn arm_compatibility_defaults_and_opt_out_survive_loading() {
+        let defaults: Settings = toml::from_str("").unwrap();
+        assert_eq!(defaults.compatibility.muvm, cfg!(target_arch = "aarch64"));
+        let settings: Settings =
+            toml::from_str("[compatibility]\nmuvm = false\nvm_memory = \"auto\"\n").unwrap();
+        let restored: Settings = toml::from_str(&settings.render().unwrap()).unwrap();
+        assert!(!restored.compatibility.muvm);
+        assert_eq!(restored.compatibility.vm_memory, VmMemory::Auto);
+        let capped: Settings = toml::from_str("[compatibility]\nvm_memory = \"4-gib\"\n").unwrap();
+        assert_eq!(capped.compatibility.vm_memory.mib(), Some(4096));
     }
 
     #[test]

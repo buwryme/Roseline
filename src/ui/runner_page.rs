@@ -164,6 +164,45 @@ pub fn build() -> gtk::Widget {
     group.add(&combo);
     page.add(&group);
 
+    if cfg!(target_arch = "aarch64") {
+        let compatibility = adw::PreferencesGroup::builder()
+            .title("ARM64 compatibility")
+            .build();
+        let toggle = adw::SwitchRow::builder()
+            .title("Use muvm for x86_64 runners")
+            .subtitle("Runs x86_64 Rosemary through muvm and FEX. Disable to require a native ARM64 runner. Applied on next launch.")
+            .active(settings.borrow().compatibility.muvm)
+            .build();
+        let toggle_settings = settings.clone();
+        toggle.connect_active_notify(move |toggle| {
+            toggle_settings.borrow_mut().compatibility.muvm = toggle.is_active();
+            let _ = toggle_settings.borrow().save();
+        });
+        compatibility.add(&toggle);
+
+        let labels: Vec<_> = crate::settings::VmMemory::ALL
+            .iter()
+            .map(|memory| memory.label())
+            .collect();
+        let memory = adw::ComboRow::builder()
+            .title("VM memory")
+            .subtitle("Guest RAM only; graphics quality is unchanged. Choose muvm default to use its normal memory sizing, or increase it for games needing more memory.")
+            .model(&gtk::StringList::new(&labels))
+            .selected(crate::settings::VmMemory::ALL.iter()
+                .position(|value| *value == settings.borrow().compatibility.vm_memory)
+                .unwrap_or(0) as u32)
+            .build();
+        let memory_settings = settings.clone();
+        memory.connect_selected_notify(move |row| {
+            if let Some(value) = crate::settings::VmMemory::ALL.get(row.selected() as usize) {
+                memory_settings.borrow_mut().compatibility.vm_memory = *value;
+                let _ = memory_settings.borrow().save();
+            }
+        });
+        compatibility.add(&memory);
+        page.add(&compatibility);
+    }
+
     // versions this machine lacks appear once GitHub answers.
     let (sender, receiver) = async_channel::bounded(1);
     std::thread::spawn(move || {
@@ -327,10 +366,8 @@ fn run_action(button: &gtk::Button, action: &'static str, title: &'static str) {
     toast(&window, &format!("{title}…"));
     let (sender, receiver) = async_channel::bounded(1);
     std::thread::spawn(move || {
-        let result = crate::rosemary::prefix_command(action).and_then(|mut command| {
-            let log = Paths::get().logs().join(format!("prefix-{action}.log"));
-            crate::util::run_logged(&mut command, &log)
-        });
+        let log = Paths::get().logs().join(format!("prefix-{action}.log"));
+        let result = crate::rosemary::prefix(action, &log);
         let _ = sender.send_blocking(result);
     });
     glib::spawn_future_local(async move {

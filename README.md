@@ -36,9 +36,17 @@ and is fully open source, from back-to-back.
 
 ## requirements
 
-- Linux on **x86_64**
+- Linux on **x86_64** or **aarch64** (ARM64, including Asahi Linux on Apple Silicon)
 - a GPU with a working Vulkan driver (recommended), or a working OpenGL stack as the fallback
 - more or less, 1GB of disk for the client, the runner and the base
+
+On ARM64, Roséline prefers a native Rosemary runner when one is available.
+Otherwise it runs the official x86_64 runner through **muvm and FEX**, which
+must be installed separately (`sudo dnf install muvm fex-emu` on Fedora Asahi).
+This fallback is enabled automatically on ARM64 and can be disabled under
+**Settings → Advanced → ARM64 compatibility**. Disabling it requires a native
+ARM64 runner. The fallback requires a native Roséline package; it cannot run
+inside Flatpak. Emulation performance depends on the game and graphics quality.
 
 ## quick install
 
@@ -77,6 +85,11 @@ sudo pacman -U build/roseline-0.1.1-1-x86_64.pkg.tar.zst
 ./build/Roseline-0.1.1-x86_64.AppImage
 tar -xJf build/roseline-0.1.1-x86_64.tar.xz -C /   # manual, /usr layout
 ```
+
+On aarch64 the same recipes name their artifacts after the machine:
+`roseline-0.1.1-1.fc44.aarch64.rpm`, `roseline_0.1.1_arm64.deb`,
+`roseline-0.1.1-1-aarch64.pkg.tar.zst`, `Roseline-0.1.1-aarch64.AppImage`.
+Set `ARCH=` to override the detected one.
 
 The recipes live in `build-aux`:
 
@@ -141,7 +154,7 @@ the manager. The runner and the MiniDarwin base stick close to
 - Roblox's web surfaces (private server lists and any other in-client web pages) do not
   render yet. This is due to Rosemary not having implemented a good-enough WebKit that
   Roblox can use. Everything else (including login) works.
-- x86_64 only
+- ARM64 Flatpak builds require a native ARM64 Rosemary runner; the muvm fallback is available only outside the sandbox
 - the Metal2Vulkan path might introduce more performance overhead than OpenGL, but notably provides better graphics
 
 > [!IMPORTANT]

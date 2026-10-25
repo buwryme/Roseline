@@ -14,6 +14,8 @@ LATEST=0
 ASSUME_YES=0
 DRY_RUN=0
 SYSTEM_KIND=""
+ARCH=""
+DEB_ARCH=""
 ASSET_GLOB=""
 SELECTED_TAG=""
 SELECTED_ASSET=""
@@ -243,10 +245,18 @@ confirm() {
     if ((fd == 3)); then exec 3<&-; fi
 }
 
+detect_arch() {
+    local machine
+    machine="$(uname -m)"
+    case "$machine" in
+        x86_64 | amd64) ARCH=x86_64; DEB_ARCH=amd64 ;;
+        aarch64 | arm64) ARCH=aarch64; DEB_ARCH=arm64 ;;
+        *) die "roseline runs on x86_64 and aarch64 only (this machine is $machine)" ;;
+    esac
+}
+
 detect_system() {
-    local arch id like
-    arch="$(uname -m)"
-    [[ "$arch" == "x86_64" ]] || die "roseline is x86_64 only (this machine is $arch)"
+    local id like
     id=""
     like=""
     if [[ -r /etc/os-release ]]; then
@@ -270,9 +280,9 @@ detect_system() {
             ;;
     esac
     case "$SYSTEM_KIND" in
-        rpm) ASSET_GLOB='*.x86_64.rpm' ;;
-        deb) ASSET_GLOB='*_amd64.deb' ;;
-        arch) ASSET_GLOB='*x86_64.pkg.tar.zst' ;;
+        rpm) ASSET_GLOB="*.$ARCH.rpm" ;;
+        deb) ASSET_GLOB="*_$DEB_ARCH.deb" ;;
+        arch) ASSET_GLOB="*-$ARCH.pkg.tar.zst" ;;
     esac
 }
 
@@ -338,9 +348,9 @@ load_releases() {
     ' "$TMP_DIR/releases.json")
     if ((${#REL_TAG[@]} == 0)); then
         if [[ "$METHOD" == "system" ]]; then
-            die "no native packages for $SYSTEM_KIND were found in the releases; try --flatpak"
+            die "no native $ARCH packages for $SYSTEM_KIND were found in the releases; try --flatpak"
         fi
-        die "no Flatpak packages were found in the releases"
+        die "no $ARCH Flatpak packages were found in the releases"
     fi
 }
 
@@ -436,7 +446,7 @@ choose_version() {
                 return 0
             fi
         done
-        die "version $WANT_VERSION is not available for $METHOD"
+        die "version $WANT_VERSION is not available for $METHOD on $ARCH"
     fi
     if ((LATEST)); then
         base="${ORDERED_BASES[0]}"
@@ -485,6 +495,7 @@ fi
 
 section "roseline setup"
 say "install the macOS Roblox client on Linux"
+detect_arch
 
 if [[ -z "$METHOD" ]]; then
     select_menu "would you like to install roseline system-wide, or via flatpak?" "system-wide" "flatpak"
@@ -498,7 +509,7 @@ fi
 if [[ "$METHOD" == "system" ]]; then
     detect_system
 else
-    ASSET_GLOB='*.flatpak'
+    ASSET_GLOB="*-$ARCH.flatpak"
     need_cmd flatpak
 fi
 
