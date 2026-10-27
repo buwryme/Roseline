@@ -126,9 +126,29 @@ pub fn build() -> adw::PreferencesPage {
 
     page.add(&group);
 
+    let player = adw::PreferencesGroup::builder().title("Player").build();
+    let close = adw::SwitchRow::builder()
+        .title("Close when leaving")
+        .subtitle(
+            "Closes Roblox when you leave an experience, instead of returning to the home screen.",
+        )
+        .active(settings.borrow().behavior.close_on_leave)
+        .build();
+    close.add_prefix(&row_prefix("application-exit-symbolic"));
+    close.connect_active_notify(glib::clone!(
+        #[strong]
+        settings,
+        move |row| {
+            settings.borrow_mut().behavior.close_on_leave = row.is_active();
+            let _ = settings.borrow().save();
+        }
+    ));
+    player.add(&close);
+    page.add(&player);
+
     let server = adw::PreferencesGroup::builder()
         .title("Server Location")
-        .description("Shows the server's city and country inside the game, in the corner, for a few seconds after joining. Uses the server IP from Roblox and ipwho.is.")
+        .description("Sends a notification with the server's city and country after joining. Uses the server IP from Roblox and ipwho.is.")
         .build();
     let toast = adw::SwitchRow::builder()
         .title("Show server location")

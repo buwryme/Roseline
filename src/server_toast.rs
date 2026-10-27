@@ -164,7 +164,7 @@ fn notify(location: &Location) -> Result<()> {
     let connection = gio::bus_get_sync(gio::BusType::Session, gio::Cancellable::NONE)
         .context("there is no session bus for the notification")?;
     let (title, body) = messages(location);
-    let mut hints = glib::VariantDict::new(None);
+    let hints = glib::VariantDict::new(None);
     hints.insert("urgency", URGENCY_NORMAL);
     hints.insert("desktop-entry", crate::config::APP_ID);
     hints.insert("transient", true);

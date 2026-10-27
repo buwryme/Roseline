@@ -42,6 +42,7 @@ pub enum Event {
     Progress(u8, &'static str),
     /// back at the desktop app, or disconnected.
     Left,
+    Returned,
 }
 
 struct Pending {
@@ -114,6 +115,9 @@ impl Session {
                 }));
             }
             events.push(Event::Progress(97, "Joining the server"));
+        } else if line.contains("returnToLuaApp: (stage:UGCGame)") {
+            self.pending = None;
+            events.push(Event::Returned);
         } else if line.contains("Time to disconnect replication data:")
             || line.contains("leaveUGCGameInternal")
         {
@@ -208,6 +212,7 @@ fn private_referral(line: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::io::Write;
 
     #[test]
     fn join_lines_parse() {
@@ -269,6 +274,38 @@ mod tests {
     fn garbage_join_lines_are_ignored() {
         assert!(parse_join("! Joining game '' place at 1.2.3.4").is_none());
         assert!(parse_join("[FLog::Output] nothing to see").is_none());
+    }
+
+    #[test]
+    fn only_leaving_a_game_counts_as_returning_home() {
+        let root = std::env::temp_dir().join(format!("roseline-leave-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        std::fs::create_dir_all(&root).unwrap();
+        let log = root.join("player.log");
+        std::fs::write(
+            &log,
+            "2026-10-19T13:37:04.648Z,1.0,abc,6 [FLog::SingleSurfaceApp] returnToLuaApp: (stage:InitializedLuaApp).\n",
+        )
+        .unwrap();
+        let mut session = Session {
+            log: Some(log.clone()),
+            offset: 0,
+            partial: String::new(),
+            pending: None,
+        };
+        let events = session.tick();
+        assert!(!events.iter().any(|event| matches!(event, Event::Returned)));
+
+        let mut file = std::fs::OpenOptions::new().append(true).open(&log).unwrap();
+        writeln!(
+            file,
+            "2026-10-24T10:47:44.680Z,34.0,abc,6 [FLog::SingleSurfaceApp] returnToLuaApp: (stage:UGCGame)."
+        )
+        .unwrap();
+        drop(file);
+        let events = session.tick();
+        assert!(events.iter().any(|event| matches!(event, Event::Returned)));
+        let _ = std::fs::remove_dir_all(&root);
     }
 
     #[test]

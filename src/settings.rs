@@ -23,6 +23,7 @@ pub struct Settings {
     pub flags: BTreeMap<String, String>,
     pub discord: Discord,
     pub server_location: ServerLocation,
+    pub behavior: Behavior,
     pub environment: Environment,
 }
 
@@ -200,6 +201,12 @@ pub struct ServerLocation {
     pub enabled: bool,
 }
 
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(default)]
+pub struct Behavior {
+    pub close_on_leave: bool,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default)]
 pub struct Discord {
@@ -295,6 +302,16 @@ mod tests {
         assert!(settings.server_location.enabled);
         let restored: Settings = toml::from_str(&settings.render().unwrap()).unwrap();
         assert!(restored.server_location.enabled);
+    }
+
+    #[test]
+    fn close_on_leave_is_off_by_default_and_round_trips() {
+        let defaults: Settings = toml::from_str("").unwrap();
+        assert!(!defaults.behavior.close_on_leave);
+        let settings: Settings = toml::from_str("[behavior]\nclose_on_leave = true\n").unwrap();
+        assert!(settings.behavior.close_on_leave);
+        let restored: Settings = toml::from_str(&settings.render().unwrap()).unwrap();
+        assert!(restored.behavior.close_on_leave);
     }
 
     #[test]
