@@ -21,6 +21,8 @@ pub struct Settings {
     pub runner: Option<String>,
     /// flag selections by name; only allowlisted presets are used.
     pub flags: BTreeMap<String, String>,
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub user_flags: BTreeMap<String, String>,
     pub discord: Discord,
     pub server_location: ServerLocation,
     pub behavior: Behavior,
@@ -290,6 +292,7 @@ mod tests {
         assert!(settings.discord.show_game);
         assert!(!settings.discord.join_button);
         assert!(settings.flags.is_empty());
+        assert!(settings.user_flags.is_empty());
         assert!(settings.environment.guest.is_empty());
         assert!(settings.environment.runner.is_empty());
     }
@@ -302,6 +305,19 @@ mod tests {
         assert!(settings.server_location.enabled);
         let restored: Settings = toml::from_str(&settings.render().unwrap()).unwrap();
         assert!(restored.server_location.enabled);
+    }
+
+    #[test]
+    fn manual_flags_are_read_from_the_config() {
+        let settings: Settings =
+            toml::from_str("[user_flags]\nFFlagSomething = \"True\"\n").unwrap();
+        assert_eq!(
+            settings
+                .user_flags
+                .get("FFlagSomething")
+                .map(String::as_str),
+            Some("True")
+        );
     }
 
     #[test]
