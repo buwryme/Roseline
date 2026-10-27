@@ -8,7 +8,7 @@ on:
         required: true
         type: string
       version:
-        description: "Version without the v (e.g. 0.1.0); notes go in docs/releases/<version>.md"
+        description: "Version without the v (e.g. 0.1.0 or 0.1.0-hotfix1); notes go in docs/releases/<version>.md"
         required: true
         type: string
       reuse_run:
@@ -62,6 +62,7 @@ jobs:
     timeout-minutes: 10
     outputs:
       version: ${{ steps.meta.outputs.version }}
+      package_version: ${{ steps.meta.outputs.package_version }}
       tag: ${{ steps.meta.outputs.tag }}
       notes: ${{ steps.meta.outputs.notes }}
     steps:
@@ -94,10 +95,11 @@ jobs:
           fi
 
           version="${RAW_VERSION#v}"
-          if [[ ! "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-            echo "::error::version must look like 0.1.0 (no v, no suffix)"
+          if [[ ! "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-hotfix[0-9]+)?$ ]]; then
+            echo "::error::version must look like 0.1.0 or 0.1.0-hotfix1 (no v)"
             exit 1
           fi
+          package_version="${version//-/.}"
           tag="v$version"
           if [ -n "${REUSE_RUN:-}" ]; then
             IFS=',' read -ra reuse_runs <<< "$REUSE_RUN"
@@ -151,6 +153,7 @@ jobs:
 
           {
             echo "version=$version"
+            echo "package_version=$package_version"
             echo "tag=$tag"
             echo "notes=$notes"
           } >> "$GITHUB_OUTPUT"
@@ -174,13 +177,13 @@ jobs:
           fetch-depth: 0
       - name: Build package
         env:
-          VERSION: ${{ needs.validate.outputs.version }}
+          PKG_VERSION: ${{ needs.validate.outputs.package_version }}
         run: |
           set -euo pipefail
           pacman -S --noconfirm --needed base-devel rust cargo gtk4 libadwaita glib2 pkgconf zstd
-          make dist VERSION="$VERSION"
+          make dist VERSION="$PKG_VERSION"
           cp build-aux/PKGBUILD build/PKGBUILD
-          sed -i "s/^pkgver=.*/pkgver=$VERSION/" build/PKGBUILD
+          sed -i "s/^pkgver=.*/pkgver=$PKG_VERSION/" build/PKGBUILD
           useradd -m builder
           chown -R builder:builder "$PWD"
           su builder -s /bin/bash -c "cd '$PWD/build' && makepkg --noconfirm --nocheck"
@@ -188,7 +191,7 @@ jobs:
       - uses: actions/upload-artifact@v7
         with:
           name: arch
-          path: build/roseline-${{ needs.validate.outputs.version }}-1-x86_64.pkg.tar.zst
+          path: build/roseline-${{ needs.validate.outputs.package_version }}-1-x86_64.pkg.tar.zst
           if-no-files-found: error
 
   rpm:
@@ -210,14 +213,14 @@ jobs:
           fetch-depth: 0
       - name: Build package
         env:
-          VERSION: ${{ needs.validate.outputs.version }}
+          PKG_VERSION: ${{ needs.validate.outputs.package_version }}
         run: |
           set -euo pipefail
           dnf install -y rpm-build make gcc cargo rust gtk4-devel libadwaita-devel glib2-devel
-          make dist VERSION="$VERSION"
+          make dist VERSION="$PKG_VERSION"
           mkdir -p rpmbuild/{BUILD,BUILDROOT,RPMS,SOURCES,SPECS,SRPMS}
-          cp "build/roseline-$VERSION.tar.gz" rpmbuild/SOURCES/
-          sed "s/^Version:.*/Version:        $VERSION/" build-aux/roseline.spec > rpmbuild/SPECS/roseline.spec
+          cp "build/roseline-$PKG_VERSION.tar.gz" rpmbuild/SOURCES/
+          sed "s/^Version:.*/Version:        $PKG_VERSION/" build-aux/roseline.spec > rpmbuild/SPECS/roseline.spec
           rpmbuild --define "_topdir $PWD/rpmbuild" -bb rpmbuild/SPECS/roseline.spec
           cp rpmbuild/RPMS/x86_64/*.rpm build/
           ls -l build/*.rpm
@@ -408,6 +411,7 @@ jobs:
       - name: Check the selected artifacts
         env:
           VERSION: ${{ needs.validate.outputs.version }}
+          PKG_VERSION: ${{ needs.validate.outputs.package_version }}
           BUILD_ARCH: ${{ inputs.build_arch }}
           BUILD_RPM: ${{ inputs.build_rpm }}
           BUILD_DEB: ${{ inputs.build_deb }}
@@ -432,8 +436,8 @@ jobs:
             fi
           }
 
-          maybe_require "$BUILD_ARCH" "roseline-$VERSION-1-x86_64.pkg.tar.zst"
-          maybe_require "$BUILD_RPM" "roseline-$VERSION-1.*.x86_64.rpm"
+          maybe_require "$BUILD_ARCH" "roseline-$PKG_VERSION-1-x86_64.pkg.tar.zst"
+          maybe_require "$BUILD_RPM" "roseline-$PKG_VERSION-1.*.x86_64.rpm"
           maybe_require "$BUILD_DEB" "roseline_${VERSION}_amd64.deb"
           maybe_require "$BUILD_FLATPAK" "Roseline-$VERSION-x86_64.flatpak"
           maybe_require "$BUILD_APPIMAGE" "Roseline-$VERSION-x86_64.AppImage"
@@ -441,8 +445,8 @@ jobs:
 
           if [ -n "${REUSE_RUN:-}" ]; then
             echo "reused run ids: $REUSE_RUN"
-            require "roseline-$VERSION-1-x86_64.pkg.tar.zst"
-            require "roseline-$VERSION-1.*.x86_64.rpm"
+            require "roseline-$PKG_VERSION-1-x86_64.pkg.tar.zst"
+            require "roseline-$PKG_VERSION-1.*.x86_64.rpm"
             require "roseline_${VERSION}_amd64.deb"
             require "Roseline-$VERSION-x86_64.flatpak"
             require "Roseline-$VERSION-x86_64.AppImage"
