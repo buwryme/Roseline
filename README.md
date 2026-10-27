@@ -14,6 +14,9 @@
   <a href="https://discord.gg/HrUrzXAxPV">
     <img src="https://img.shields.io/badge/discord-server-5865f2?style=flat-square&logo=discord&logoColor=white" alt="discord server">
   </a>
+  <a href="https://github.com/buwryme/Roseline/actions/workflows/ci.yml">
+    <img src="https://github.com/buwryme/Roseline/actions/workflows/ci.yml/badge.svg?branch=arm64" alt="CI">
+  </a>
 </p>
 
 Roséline is a small GTK4/Libadwaita app written in Rust that runs the macOS Roblox clients via Rosemary. 
