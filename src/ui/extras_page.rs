@@ -125,5 +125,26 @@ pub fn build() -> adw::PreferencesPage {
     group.add(&state);
 
     page.add(&group);
+
+    let server = adw::PreferencesGroup::builder()
+        .title("Server Location")
+        .description("Shows the server's city and country inside the game, in the corner, for a few seconds after joining. Uses the server IP from Roblox and ipwho.is.")
+        .build();
+    let toast = adw::SwitchRow::builder()
+        .title("Show server location")
+        .subtitle("Sends a notification with the server's city and country after joining.")
+        .active(settings.borrow().server_location.enabled)
+        .build();
+    toast.add_prefix(&row_prefix("mark-location-symbolic"));
+    toast.connect_active_notify(glib::clone!(
+        #[strong]
+        settings,
+        move |row| {
+            settings.borrow_mut().server_location.enabled = row.is_active();
+            let _ = settings.borrow().save();
+        }
+    ));
+    server.add(&toast);
+    page.add(&server);
     page
 }

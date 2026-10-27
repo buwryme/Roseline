@@ -160,6 +160,7 @@ fn root_page(
     graphics.add(&super::graphics_page::device_row(&settings));
     graphics.add(&super::graphics_page::api_row(&settings));
     content.append(&graphics);
+    content.append(&server_location_group(&settings));
     content.append(&discord_group(&settings));
     content.append(&advanced_section(&settings, &selected));
 
@@ -211,6 +212,29 @@ fn root_page(
         .tag("setup")
         .child(&view)
         .build()
+}
+
+fn server_location_group(settings: &Rc<RefCell<Settings>>) -> adw::PreferencesGroup {
+    let group = adw::PreferencesGroup::builder()
+        .title("Server Location")
+        .build();
+
+    let enabled = adw::SwitchRow::builder()
+        .title("Show server location")
+        .subtitle("Sends a notification with the server's city and country after joining.")
+        .active(settings.borrow().server_location.enabled)
+        .build();
+    enabled.add_prefix(&row_prefix("mark-location-symbolic"));
+    enabled.connect_active_notify(glib::clone!(
+        #[strong]
+        settings,
+        move |row| {
+            settings.borrow_mut().server_location.enabled = row.is_active();
+            let _ = settings.borrow().save();
+        }
+    ));
+    group.add(&enabled);
+    group
 }
 
 fn discord_group(settings: &Rc<RefCell<Settings>>) -> adw::PreferencesGroup {

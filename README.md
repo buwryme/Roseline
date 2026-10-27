@@ -130,6 +130,7 @@ which otherwise keeps shadowing the package's icon.
 ## features
 
 - automatic client updates from Roblox's own version endpoint
+- a notification with the server's city and country on join
 - Vulkan by default (Metal2Vulkan backed), OpenGL as a fallback
 - GPU pickers for both paths, inspired from Butter's device selection
 - text and monospace font overrides, leaving language and emoji fonts alone

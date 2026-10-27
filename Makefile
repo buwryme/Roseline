@@ -51,7 +51,7 @@ dist:
 	    -czf build/roseline-$(PKG_VERSION).tar.gz .
 
 # a plain binary tarball, laid out as a system prefix
-dist-bin:
+dist-bin: build
 	rm -rf "$(STAGING)"
 	$(MAKE) install DESTDIR="$(STAGING)" PREFIX=/usr
 	strip --strip-unneeded "$(STAGING)/usr/bin/roseline" || true

@@ -55,8 +55,9 @@ pub(crate) fn installed_upload_at(version_file: &Path) -> Option<String> {
 /// bring the managed copy up to Roblox's latest; returns whether it downloaded.
 pub fn ensure(progress: &Progress) -> Result<bool> {
     let paths = Paths::get();
-    let latest = latest()?;
     remove_stray_app(&paths)?;
+    disable_updater(&paths)?;
+    let latest = latest()?;
     let bundle_ready = paths
         .app_bundle()
         .join("Contents/MacOS/RobloxPlayer")
@@ -88,6 +89,7 @@ pub fn ensure(progress: &Progress) -> Result<bool> {
     std::fs::rename(&staging, paths.app())?;
     crate::util::write_atomic(&paths.app_version(), latest.upload.as_bytes())?;
     remove_stray_app(&paths)?;
+    disable_updater(&paths)?;
     let _ = std::fs::remove_file(&zip);
     Ok(true)
 }
@@ -103,21 +105,36 @@ fn bundle_version(bundle: &Path) -> Option<String> {
 
 fn remove_stray_app(paths: &Paths) -> Result<()> {
     let stray = paths.app().join("Roblox.app");
-    let metadata = match std::fs::symlink_metadata(&stray) {
+    remove_path(&stray)
+}
+
+fn disable_updater(paths: &Paths) -> Result<()> {
+    let bundle = paths.app_bundle();
+    remove_path(&bundle.join("Contents/MacOS/RobloxPlayerInstaller.app"))?;
+    remove_path(&bundle.join("Contents/MacOS/RobloxPlayerInstaller"))?;
+    if let Some(user) = paths.guest_user() {
+        let library = user.join("Library/Roblox");
+        for name in ["RobloxPlayer.zip", "RobloxPlayerInstaller", "versions"] {
+            remove_path(&library.join(name))?;
+        }
+    }
+    Ok(())
+}
+
+fn remove_path(path: &Path) -> Result<()> {
+    let metadata = match std::fs::symlink_metadata(path) {
         Ok(metadata) => metadata,
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(()),
         Err(error) => {
-            return Err(error).with_context(|| format!("could not inspect {}", stray.display()));
+            return Err(error).with_context(|| format!("could not inspect {}", path.display()));
         }
     };
     if metadata.is_dir() {
-        std::fs::remove_dir_all(&stray)
-            .with_context(|| format!("could not remove {}", stray.display()))?;
+        std::fs::remove_dir_all(path)
+            .with_context(|| format!("could not remove {}", path.display()))
     } else {
-        std::fs::remove_file(&stray)
-            .with_context(|| format!("could not remove {}", stray.display()))?;
+        std::fs::remove_file(path).with_context(|| format!("could not remove {}", path.display()))
     }
-    Ok(())
 }
 
 /// keep the client on the same production channel Roseline downloads from.
@@ -266,6 +283,41 @@ fn rewrite_identifier(text: &str, id: &str) -> Option<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_client_updater_and_its_payload_are_removed() {
+        let root = std::env::temp_dir().join(format!("roseline-updater-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        let paths = Paths {
+            data: root.clone(),
+            config: root.clone(),
+            cache: root.clone(),
+        };
+        let installer = paths
+            .app_bundle()
+            .join("Contents/MacOS/RobloxPlayerInstaller.app/Contents/MacOS");
+        std::fs::create_dir_all(&installer).unwrap();
+        std::fs::write(installer.join("RobloxPlayerInstaller"), b"x").unwrap();
+        std::fs::create_dir_all(paths.app().join("Roblox.app")).unwrap();
+        let guest = paths.prefix().join("root/Users/miles/Library/Roblox");
+        std::fs::create_dir_all(&guest).unwrap();
+        std::fs::write(guest.join("RobloxPlayer.zip"), b"x").unwrap();
+        std::fs::create_dir_all(guest.join("RobloxPlayerInstaller")).unwrap();
+
+        remove_stray_app(&paths).unwrap();
+        disable_updater(&paths).unwrap();
+
+        assert!(!paths.app().join("Roblox.app").exists());
+        assert!(
+            !paths
+                .app_bundle()
+                .join("Contents/MacOS/RobloxPlayerInstaller.app")
+                .exists()
+        );
+        assert!(!guest.join("RobloxPlayer.zip").exists());
+        assert!(!guest.join("RobloxPlayerInstaller").exists());
+        let _ = std::fs::remove_dir_all(&root);
+    }
 
     #[test]
     fn finds_the_bundle_at_the_zip_root() {

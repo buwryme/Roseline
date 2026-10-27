@@ -5,12 +5,14 @@
 //! markers follow Bloxstrap's watcher (MIT, the Bloxstrap contributors).
 
 use std::io::{Read, Seek, SeekFrom};
+use std::net::IpAddr;
 use std::path::PathBuf;
 
 /// a join seen but not yet named.
 pub struct Joining {
     pub place_id: u64,
     pub job_id: String,
+    pub server_ip: Option<IpAddr>,
     /// private servers cannot be joined with a deep link; use the game page.
     pub private: bool,
 }
@@ -45,6 +47,7 @@ pub enum Event {
 struct Pending {
     place_id: u64,
     job_id: String,
+    server_ip: Option<IpAddr>,
     private: bool,
 }
 
@@ -82,10 +85,11 @@ impl Session {
 
     fn feed_line(&mut self, line: &str, events: &mut Vec<Event>) {
         if line.contains("! Joining game '") {
-            if let Some((job_id, place_id)) = parse_join(line) {
+            if let Some((job_id, place_id, server_ip)) = parse_join(line) {
                 self.pending = Some(Pending {
                     place_id,
                     job_id,
+                    server_ip,
                     private: false,
                 });
             }
@@ -93,12 +97,19 @@ impl Session {
             if let Some(pending) = self.pending.as_mut() {
                 pending.private = true;
             }
+        } else if line.contains("Replicator created for player ") {
+            if let Some(ip) = parse_public_ip(line) {
+                if let Some(pending) = self.pending.as_mut() {
+                    pending.server_ip = Some(ip);
+                }
+            }
         } else if line.contains("Replicator created:") {
             // by now the join-time referral has told us public vs private.
             if let Some(pending) = self.pending.take() {
                 events.push(Event::Joining(Joining {
                     place_id: pending.place_id,
                     job_id: pending.job_id,
+                    server_ip: pending.server_ip,
                     private: pending.private,
                 }));
             }
@@ -145,7 +156,7 @@ impl Session {
 }
 
 /// `! Joining game '<36-char uuid>' place <digits> at <ip>`.
-fn parse_join(line: &str) -> Option<(String, u64)> {
+fn parse_join(line: &str) -> Option<(String, u64, Option<IpAddr>)> {
     let rest = line.split("! Joining game '").nth(1)?;
     let job_id = rest.split('\'').next()?;
     let place_id: u64 = rest
@@ -155,7 +166,37 @@ fn parse_join(line: &str) -> Option<(String, u64)> {
         .next()?
         .parse()
         .ok()?;
-    (job_id.len() == 36).then(|| (job_id.to_string(), place_id))
+    let server_ip = rest
+        .split(" at ")
+        .nth(1)
+        .and_then(|tail| tail.split_whitespace().next())
+        .and_then(|ip| ip.parse().ok())
+        .filter(|ip| usable(*ip));
+    (job_id.len() == 36).then(|| (job_id.to_string(), place_id, server_ip))
+}
+
+fn parse_public_ip(line: &str) -> Option<IpAddr> {
+    const MARKERS: [&str; 4] = [
+        "UDMUX Address = ",
+        "Connected to server at ",
+        "serverId: ",
+        "Replicator created for player ",
+    ];
+    MARKERS.iter().find_map(|marker| {
+        let rest = line.split(marker).nth(1)?;
+        let candidate = rest.split([':', ',', '|', ' ']).next()?;
+        let ip: IpAddr = candidate.parse().ok()?;
+        usable(ip).then_some(ip)
+    })
+}
+
+fn usable(ip: IpAddr) -> bool {
+    match ip {
+        IpAddr::V4(ip) => {
+            !(ip.is_private() || ip.is_loopback() || ip.is_link_local() || ip.is_unspecified())
+        }
+        IpAddr::V6(ip) => !(ip.is_loopback() || ip.is_unspecified()),
+    }
 }
 
 /// a private server join names its referral in the join-load-time line.
@@ -171,9 +212,57 @@ mod tests {
     #[test]
     fn join_lines_parse() {
         let line = "2026-10-18T13:49:33.349Z,1.2,abc,6 [FLog::Output] ! Joining game 'e42cc7b0-9b0a-4b7e-8f35-1c2d3e4f5a6b' place 2753915549 at 128.116.44.3";
-        let (job, place) = parse_join(line).unwrap();
+        let (job, place, ip) = parse_join(line).unwrap();
         assert_eq!(job, "e42cc7b0-9b0a-4b7e-8f35-1c2d3e4f5a6b");
         assert_eq!(place, 2753915549);
+        assert_eq!(ip.unwrap().to_string(), "128.116.44.3");
+    }
+
+    #[test]
+    fn public_addresses_are_taken_from_the_network_lines() {
+        let line = "2026-10-27T14:26:02.557Z,3.557239,ed3c0000,6 [FLog::Network] Replicator created for player 128.116.13.34|59039";
+        assert_eq!(parse_public_ip(line).unwrap().to_string(), "128.116.13.34");
+        assert_eq!(
+            parse_public_ip("[FLog::Network] UDMUX Address = 128.116.44.33, Port = 59435")
+                .unwrap()
+                .to_string(),
+            "128.116.44.33"
+        );
+        assert!(
+            parse_public_ip("[FLog::Network] Replicator created for player 10.30.4.228|59039")
+                .is_none()
+        );
+    }
+
+    #[test]
+    fn join_uses_the_public_network_address() {
+        let root =
+            std::env::temp_dir().join(format!("roseline-session-public-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        std::fs::create_dir_all(&root).unwrap();
+        let log = root.join("player.log");
+        std::fs::write(
+            &log,
+            "\
+2026-10-27T14:39:14.326Z,8.326221,eb130000,6 [FLog::Output] ! Joining game 'e6666ab4-889d-4c4e-9e13-57604261e19d' place 142823291 at 10.9.7.196
+2026-10-27T14:39:14.944Z,8.944253,eb210000,7 [FLog::Network] Replicator created for player 128.116.44.33|53452
+2026-10-27T14:39:14.944Z,8.944260,eb210000,7 [FLog::Network] Replicator created: 0x7f278ba47e40
+",
+        )
+        .unwrap();
+        let events = Session::new(log).tick();
+        let joining = events
+            .iter()
+            .find_map(|event| match event {
+                Event::Joining(joining) => Some(joining),
+                _ => None,
+            })
+            .expect("a join event");
+        assert_eq!(
+            joining.server_ip.map(|ip| ip.to_string()).as_deref(),
+            Some("128.116.44.33")
+        );
+        let _ = std::fs::remove_dir_all(root);
     }
 
     #[test]
@@ -187,6 +276,7 @@ mod tests {
         let joining = Joining {
             place_id: 4483381587,
             job_id: "e42cc7b0-9b0a-4b7e-8f35-1c2d3e4f5a6b".into(),
+            server_ip: Some("128.116.44.3".parse().unwrap()),
             private: false,
         };
         assert_eq!(

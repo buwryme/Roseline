@@ -22,6 +22,7 @@ pub struct Settings {
     /// flag selections by name; only allowlisted presets are used.
     pub flags: BTreeMap<String, String>,
     pub discord: Discord,
+    pub server_location: ServerLocation,
     pub environment: Environment,
 }
 
@@ -193,6 +194,12 @@ pub struct Environment {
     pub runner: Vec<String>,
 }
 
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(default)]
+pub struct ServerLocation {
+    pub enabled: bool,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default)]
 pub struct Discord {
@@ -272,11 +279,22 @@ mod tests {
         assert!(settings.fonts.mono.is_none());
         assert!(settings.runner.is_none());
         assert!(!settings.discord.enabled);
+        assert!(!settings.server_location.enabled);
         assert!(settings.discord.show_game);
         assert!(!settings.discord.join_button);
         assert!(settings.flags.is_empty());
         assert!(settings.environment.guest.is_empty());
         assert!(settings.environment.runner.is_empty());
+    }
+
+    #[test]
+    fn server_location_is_off_by_default_and_round_trips() {
+        let defaults: Settings = toml::from_str("").unwrap();
+        assert!(!defaults.server_location.enabled);
+        let settings: Settings = toml::from_str("[server_location]\nenabled = true\n").unwrap();
+        assert!(settings.server_location.enabled);
+        let restored: Settings = toml::from_str(&settings.render().unwrap()).unwrap();
+        assert!(restored.server_location.enabled);
     }
 
     #[test]

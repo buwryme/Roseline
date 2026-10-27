@@ -13,6 +13,7 @@ arch="${ARCH:-$(uname -m)}"
 stage="$(mktemp -d)"
 trap 'rm -rf "$stage"' EXIT
 
+cargo build --release --locked
 make install DESTDIR="$stage" PREFIX=/usr
 strip --strip-unneeded "$stage/usr/bin/roseline" || true
 

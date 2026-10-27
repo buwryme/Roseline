@@ -2,7 +2,7 @@
 name = "roseline"
 version = "0.1.1-hotfix1"
 edition = "2024"
-rust-version = "1.88"
+rust-version = "1.92"
 description = "Run Roblox with Rosemary on Linux"
 license = "GPL-3.0-or-later"
 repository = "https://github.com/buwryme/Roseline"

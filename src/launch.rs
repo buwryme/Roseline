@@ -103,6 +103,9 @@ pub fn run(
         .spawn()
         .with_context(|| "could not start Rosemary")?;
     crate::util::write_atomic(&paths.game_pid(), child.id().to_string().as_bytes())?;
+    if settings.server_location.enabled {
+        spawn_toast_helper(&log_path, child.id());
+    }
 
     // the child writes its guest log to this launch's file; tail that exact
     // file, so a stale log from another instance can never be mistaken for it.
@@ -123,6 +126,34 @@ pub fn run(
     });
 
     Ok((child, event_receiver))
+}
+
+fn spawn_toast_helper(log: &Path, game_pid: u32) {
+    let Ok(executable) = std::env::current_exe() else {
+        return;
+    };
+    let Ok(file) = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(log)
+    else {
+        return;
+    };
+    let Ok(error) = file.try_clone() else {
+        return;
+    };
+    let mut command = Command::new(executable);
+    command
+        .arg("--toast-helper")
+        .arg(log)
+        .arg(game_pid.to_string())
+        .stdin(Stdio::null())
+        .stdout(Stdio::from(file))
+        .stderr(Stdio::from(error));
+    std::os::unix::process::CommandExt::process_group(&mut command, 0);
+    if let Err(error) = command.spawn() {
+        eprintln!("roseline-toast: could not start the helper: {error}");
+    }
 }
 
 /// what setup downloads before the first launch: a runner, the prefix, the
