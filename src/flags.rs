@@ -115,13 +115,21 @@ pub const EXTRA_KEYS: [&str; 6] = [
     "DFFlagTextureQualityOverrideEnabled",
 ];
 
+const DISABLE_MAC_UPDATES: &str = "FFlagDebugMacDisableUpdates";
+
+fn managed_payload(settings: &Settings) -> BTreeMap<String, String> {
+    let mut values = payload(settings);
+    values.insert(DISABLE_MAC_UPDATES.to_string(), "True".to_string());
+    values
+}
+
 /// write `ClientAppSettings.json` into the managed copy.
 pub fn write(settings: &Settings) -> Result<PathBuf> {
     let directory = Paths::get()
         .app_bundle()
         .join("Contents/MacOS/ClientSettings");
     let path = directory.join("ClientAppSettings.json");
-    let text = serde_json::to_string_pretty(&payload(settings))?;
+    let text = serde_json::to_string_pretty(&managed_payload(settings))?;
     crate::util::write_atomic(&path, text.as_bytes())?;
     Ok(path)
 }
@@ -144,6 +152,15 @@ mod tests {
         assert_eq!(
             payload.get("FIntDebugForceMSAASamples").map(String::as_str),
             Some("4")
+        );
+    }
+
+    #[test]
+    fn managed_payload_disables_the_client_updater() {
+        let payload = managed_payload(&Settings::default());
+        assert_eq!(
+            payload.get(DISABLE_MAC_UPDATES).map(String::as_str),
+            Some("True")
         );
     }
 

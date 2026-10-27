@@ -7,7 +7,7 @@
 <p align="center">Run Roblox's macOS builds on Linux, through <a href="https://github.com/microlift/rosemary">Rosemary</a>.</p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/version-0.1.1-b23a48?style=flat-square" alt="version">
+  <img src="https://img.shields.io/badge/version-0.1.1--hotfix1-b23a48?style=flat-square" alt="version">
   <img src="https://img.shields.io/badge/license-GPL--3.0--or--later-6c7a57?style=flat-square" alt="license">
   <img src="https://img.shields.io/badge/GTK4-Libadwaita-7752cc?style=flat-square" alt="GTK4">
   <img src="https://img.shields.io/badge/Language-Rust-c1440e?style=flat-square" alt="Rust">
@@ -49,7 +49,7 @@ curl -fsSL https://buwryy.net/api/roseline/setup-script | bash
 ### non-interactive install:
 
 ```sh
-curl -fsSL https://buwryy.net/api/roseline/setup-script | bash -s -- --system --version v0.1.1 --yes
+curl -fsSL https://buwryy.net/api/roseline/setup-script | bash -s -- --system --version v0.1.1-hotfix1 --yes
 curl -fsSL https://buwryy.net/api/roseline/setup-script | bash -s -- --flatpak --latest --yes
 ```
 
@@ -71,11 +71,11 @@ travel with it; they are the user's, not the install's.
 Every recipe builds from this tree and drops its artifact in `build/`.
 
 ```sh
-sudo dnf install build/roseline-0.1.1-1.fc44.x86_64.rpm
-sudo apt install build/roseline_0.1.1_amd64.deb
-sudo pacman -U build/roseline-0.1.1-1-x86_64.pkg.tar.zst
-./build/Roseline-0.1.1-x86_64.AppImage
-tar -xJf build/roseline-0.1.1-x86_64.tar.xz -C /   # manual, /usr layout
+sudo dnf install build/roseline-0.1.1.hotfix1-1.fc44.x86_64.rpm
+sudo apt install build/roseline_0.1.1-hotfix1_amd64.deb
+sudo pacman -U build/roseline-0.1.1.hotfix1-1-x86_64.pkg.tar.zst
+./build/Roseline-0.1.1-hotfix1-x86_64.AppImage
+tar -xJf build/roseline-0.1.1-hotfix1-x86_64.tar.xz -C /   # manual, /usr layout
 ```
 
 The recipes live in `build-aux`:
@@ -138,9 +138,7 @@ the manager. The runner and the MiniDarwin base stick close to
 
 ## known issues (please don't report those :<)
 
-- Roblox's web surfaces (private server lists and any other in-client web pages) do not
-  render yet. This is due to Rosemary not having implemented a good-enough WebKit that
-  Roblox can use. Everything else (including login) works.
+- games using video playback will crash roblox. this expects a fix from future rosemary releases
 - x86_64 only
 - the Metal2Vulkan path might introduce more performance overhead than OpenGL, but notably provides better graphics
 

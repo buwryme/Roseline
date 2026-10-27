@@ -14,6 +14,21 @@ use crate::progress::Progress;
 
 const VERSION_URL: &str = "https://clientsettingscdn.roblox.com/v2/client-version/MacPlayer";
 
+const CHANNEL_FILES: [&str; 2] = [
+    "com.roblox.RobloxPlayerChannel.plist",
+    "net.buwryy.RoselineChannel.plist",
+];
+
+const PRODUCTION_CHANNEL_PLIST: &str = r#"<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>www.roblox.com</key>
+	<string></string>
+</dict>
+</plist>
+"#;
+
 #[derive(Debug, Clone, Deserialize)]
 pub struct ClientVersion {
     pub version: String,
@@ -41,9 +56,13 @@ pub(crate) fn installed_upload_at(version_file: &Path) -> Option<String> {
 pub fn ensure(progress: &Progress) -> Result<bool> {
     let paths = Paths::get();
     let latest = latest()?;
-    if installed_upload().as_deref() == Some(latest.upload.as_str())
-        && paths.app_bundle().join("Contents/MacOS").is_dir()
-    {
+    remove_stray_app(&paths)?;
+    let bundle_ready = paths
+        .app_bundle()
+        .join("Contents/MacOS/RobloxPlayer")
+        .is_file()
+        && bundle_version(&paths.app_bundle()).as_deref() == Some(latest.version.as_str());
+    if installed_upload().as_deref() == Some(latest.upload.as_str()) && bundle_ready {
         return Ok(false);
     }
 
@@ -68,8 +87,51 @@ pub fn ensure(progress: &Progress) -> Result<bool> {
     }
     std::fs::rename(&staging, paths.app())?;
     crate::util::write_atomic(&paths.app_version(), latest.upload.as_bytes())?;
+    remove_stray_app(&paths)?;
     let _ = std::fs::remove_file(&zip);
     Ok(true)
+}
+
+fn bundle_version(bundle: &Path) -> Option<String> {
+    const KEY: &str = "<key>CFBundleShortVersionString</key>";
+    let text = std::fs::read_to_string(bundle.join("Contents/Info.plist")).ok()?;
+    let after_key = &text[text.find(KEY)? + KEY.len()..];
+    let open = after_key.find("<string>")? + "<string>".len();
+    let close = after_key[open..].find("</string>")? + open;
+    Some(after_key[open..close].trim().to_string())
+}
+
+fn remove_stray_app(paths: &Paths) -> Result<()> {
+    let stray = paths.app().join("Roblox.app");
+    let metadata = match std::fs::symlink_metadata(&stray) {
+        Ok(metadata) => metadata,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(()),
+        Err(error) => {
+            return Err(error).with_context(|| format!("could not inspect {}", stray.display()));
+        }
+    };
+    if metadata.is_dir() {
+        std::fs::remove_dir_all(&stray)
+            .with_context(|| format!("could not remove {}", stray.display()))?;
+    } else {
+        std::fs::remove_file(&stray)
+            .with_context(|| format!("could not remove {}", stray.display()))?;
+    }
+    Ok(())
+}
+
+/// keep the client on the same production channel Roseline downloads from.
+fn pin_production_channel(paths: &Paths) -> Result<()> {
+    let Some(user) = paths.guest_user() else {
+        return Ok(());
+    };
+    let preferences = user.join("Library/Preferences");
+    for name in CHANNEL_FILES {
+        let path = preferences.join(name);
+        crate::util::write_atomic(&path, PRODUCTION_CHANNEL_PLIST.as_bytes())
+            .with_context(|| format!("could not pin {}", path.display()))?;
+    }
+    Ok(())
 }
 
 /// the zip's app bundle, wherever it hides; some builds wrap it.
@@ -174,6 +236,7 @@ pub fn brand() -> Result<()> {
             }
         }
     }
+    pin_production_channel(&paths)?;
     Ok(())
 }
 
@@ -260,5 +323,65 @@ mod tests {
             Some("net.buwryy.RoselineChannel.plist")
         );
         assert_eq!(branded_name("something-else"), None);
+    }
+
+    #[test]
+    fn reads_the_version_from_the_bundle_plist() {
+        let root = std::env::temp_dir().join(format!("roseline-plist-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        let contents = root.join("Contents");
+        std::fs::create_dir_all(&contents).unwrap();
+        std::fs::write(
+            contents.join("Info.plist"),
+            "<plist><dict><key>CFBundleShortVersionString</key>\n<string>0.744.0.7441080</string></dict></plist>",
+        )
+        .unwrap();
+
+        assert_eq!(bundle_version(&root).as_deref(), Some("0.744.0.7441080"));
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn removes_a_stray_unbranded_bundle() {
+        let root = std::env::temp_dir().join(format!("roseline-stray-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        let paths = Paths {
+            data: root.clone(),
+            config: root.clone(),
+            cache: root.clone(),
+        };
+        let stray = paths.app().join("Roblox.app");
+        std::fs::create_dir_all(stray.join("Contents/MacOS")).unwrap();
+        std::fs::write(stray.join("Contents/MacOS/RobloxPlayer"), b"old").unwrap();
+
+        remove_stray_app(&paths).unwrap();
+
+        assert!(!stray.exists());
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn pins_both_channel_preferences_to_production() {
+        let root = std::env::temp_dir().join(format!("roseline-channel-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        let paths = Paths {
+            data: root.clone(),
+            config: root.clone(),
+            cache: root.clone(),
+        };
+        let preferences = paths.prefix().join("root/Users/miles/Library/Preferences");
+        std::fs::create_dir_all(&preferences).unwrap();
+        for name in CHANNEL_FILES {
+            std::fs::write(preferences.join(name), "zbeta").unwrap();
+        }
+
+        pin_production_channel(&paths).unwrap();
+
+        for name in CHANNEL_FILES {
+            let text = std::fs::read_to_string(preferences.join(name)).unwrap();
+            assert!(!text.contains("zbeta"));
+            assert!(text.contains("<string></string>"));
+        }
+        let _ = std::fs::remove_dir_all(&root);
     }
 }

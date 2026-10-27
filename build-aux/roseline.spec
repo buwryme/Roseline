@@ -2,7 +2,7 @@
 %global debug_package %{nil}
 
 Name:           roseline
-Version:        0.1.1
+Version:        0.1.1.hotfix1
 Release:        1%{?dist}
 Summary:        Run Roblox with Rosemary on Linux
 
@@ -48,6 +48,8 @@ install -Dm644 "NOTICE" "%{buildroot}%{_licensedir}/roseline/NOTICE"
 %license %{_licensedir}/roseline/NOTICE
 
 %changelog
+* Tue Oct 27 2026 buwryme <hello@buwryy.net> - 0.1.1.hotfix1-1
+- Keep Roblox updates under Roseline and pin the checked Rosemary release
 * Fri Oct 23 2026 buwryme <hello@buwryy.net> - 0.1.1-1
 - Font overrides, Discord RPC updates, and the remote installer
 * Sun Oct 18 2026 buwryme <hello@buwryy.net> - 0.1.0-1

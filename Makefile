@@ -1,5 +1,6 @@
 PREFIX ?= /usr/local
-VERSION := 0.1.1
+VERSION := 0.1.1-hotfix1
+PKG_VERSION := $(subst -,.,$(VERSION))
 CARGO ?= cargo
 STAGING := $(CURDIR)/build/stage
 
@@ -39,12 +40,13 @@ uninstall:
 	    fi; \
 	fi
 
-# a source tarball, the top directory named as rpmbuild expects
+# a source tarball, the top directory named as rpmbuild expects; the package
+# managers cannot carry the hotfix hyphen in their version fields.
 dist:
 	mkdir -p build
 	tar --exclude=./target --exclude=./build --exclude-vcs \
-	    --transform 's,^\.,roseline-$(VERSION),' \
-	    -czf build/roseline-$(VERSION).tar.gz .
+	    --transform 's,^\.,roseline-$(PKG_VERSION),' \
+	    -czf build/roseline-$(PKG_VERSION).tar.gz .
 
 # a plain binary tarball, laid out as a system prefix
 dist-bin:

@@ -36,10 +36,10 @@ pub fn run(
     let mut settings = Settings::load();
 
     let runner_id = crate::runner::ensure(progress)?;
-    // first run: record what was installed, so the picker never guesses
-    if settings.runner.is_none() {
-        settings.runner = Some(runner_id);
-        let _ = settings.save();
+    // always follow the release that ensure() just checked: a downloaded
+    // runner must be the one the prefix actually uses.
+    if set_runner(&mut settings, &runner_id) {
+        settings.save()?;
     }
     prepare_bottle(progress, &settings)?;
 
@@ -105,11 +105,19 @@ pub fn prepare(progress: &Progress, tag: Option<&str>) -> Result<()> {
         Some(tag) => crate::runner::ensure_tag(progress, tag)?,
         None => crate::runner::ensure(progress)?,
     };
-    if tag.is_some() || settings.runner.is_none() {
-        settings.runner = Some(runner_id);
+    if set_runner(&mut settings, &runner_id) {
         settings.save()?;
     }
     prepare_bottle(progress, &settings)
+}
+
+/// pin the config to the runner that was just checked or installed.
+fn set_runner(settings: &mut Settings, runner_id: &str) -> bool {
+    if settings.runner.as_deref() == Some(runner_id) {
+        return false;
+    }
+    settings.runner = Some(runner_id.to_string());
+    true
 }
 
 fn prepare_bottle(progress: &Progress, settings: &Settings) -> Result<()> {
@@ -422,6 +430,16 @@ mod tests {
         );
         assert!(arguments.windows(2).any(|pair| pair[0] == "-gameInstanceId"
             && pair[1] == "e42cc7b0-9b0a-4b7e-8f35-1c2d3e4f5a6b"));
+    }
+
+    #[test]
+    fn runner_selection_follows_the_checked_release() {
+        let mut settings = Settings::default();
+        assert!(set_runner(&mut settings, "rosemary-v0.4.2-official"));
+        assert_eq!(settings.runner.as_deref(), Some("rosemary-v0.4.2-official"));
+        assert!(!set_runner(&mut settings, "rosemary-v0.4.2-official"));
+        assert!(set_runner(&mut settings, "rosemary-v0.5.0-official"));
+        assert_eq!(settings.runner.as_deref(), Some("rosemary-v0.5.0-official"));
     }
 
     #[test]
