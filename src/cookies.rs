@@ -123,17 +123,26 @@ fn label(profile: &str) -> String {
 
 /// the guest user's jar, split across the two bundle identifiers.
 struct Files {
+    dir: PathBuf,
     branded: PathBuf,
     legacy: PathBuf,
 }
 
 impl Files {
     fn for_paths(paths: &Paths) -> Option<Files> {
-        let root = paths.guest_user()?.join("Library/Cookies");
+        let dir = paths.guest_user()?.join("Library/Cookies");
         Some(Files {
-            branded: root.join(BRANDED_COOKIE),
-            legacy: root.join(LEGACY_COOKIE),
+            dir: dir.clone(),
+            branded: dir.join(BRANDED_COOKIE),
+            legacy: dir.join(LEGACY_COOKIE),
         })
+    }
+
+    /// the client runs as this user, so only this user needs to look inside.
+    fn ensure_private_dir(&self) -> Result<()> {
+        std::fs::create_dir_all(&self.dir)?;
+        std::fs::set_permissions(&self.dir, std::fs::Permissions::from_mode(0o700))?;
+        Ok(())
     }
 
     fn paths(&self) -> [&Path; 2] {
@@ -157,6 +166,7 @@ impl Files {
     }
 
     fn write(&self, text: &str) -> Result<()> {
+        self.ensure_private_dir()?;
         for path in self.paths() {
             write_private(path, text)?;
         }
@@ -189,12 +199,16 @@ fn prepare_with(store: &dyn Store, paths: &Paths) -> Result<()> {
     let Some(files) = Files::for_paths(paths) else {
         return Ok(());
     };
+    files.ensure_private_dir()?;
     let key = key(paths);
     match files.read()? {
         Some(text) if has_session(&text) => {
             // a file on disk is the live jar, including the first launch
-            // after an upgrade; it wins over an older keyring copy.
+            // after an upgrade; it wins over an older keyring copy. Rewrite
+            // it so a jar left world-readable is closed down before the
+            // client starts.
             store.set(&key, &text)?;
+            files.write(&text)?;
         }
         Some(_) => {
             // logged out: do not restore a stale session later.
@@ -234,6 +248,7 @@ fn seal_with(store: &dyn Store, paths: &Paths) -> Result<()> {
     let Some(files) = Files::for_paths(paths) else {
         return Ok(());
     };
+    files.ensure_private_dir()?;
     let key = key(paths);
     match files.read()? {
         Some(text) if has_session(&text) => {
@@ -392,12 +407,18 @@ mod tests {
         let paths = temp_paths("adopt");
         let files = files(&paths);
         std::fs::write(&files.branded, JAR).unwrap();
+        std::fs::set_permissions(&files.branded, std::fs::Permissions::from_mode(0o644)).unwrap();
+        std::fs::set_permissions(&files.dir, std::fs::Permissions::from_mode(0o755)).unwrap();
         let store = Memory::default();
 
         prepare_with(&store, &paths).unwrap();
 
         assert_eq!(store.value.borrow().as_deref(), Some(JAR));
-        assert!(files.branded.exists());
+        assert_eq!(std::fs::read_to_string(&files.branded).unwrap(), JAR);
+        assert_eq!(std::fs::read_to_string(&files.legacy).unwrap(), JAR);
+        assert_eq!(mode(&files.branded), 0o600);
+        assert_eq!(mode(&files.legacy), 0o600);
+        assert_eq!(mode(&files.dir), 0o700);
         let _ = std::fs::remove_dir_all(&paths.data);
     }
 
@@ -414,6 +435,7 @@ mod tests {
         assert_eq!(std::fs::read_to_string(&files.legacy).unwrap(), JAR);
         assert_eq!(mode(&files.branded), 0o600);
         assert_eq!(mode(&files.legacy), 0o600);
+        assert_eq!(mode(&files.dir), 0o700);
         let _ = std::fs::remove_dir_all(&paths.data);
     }
 
