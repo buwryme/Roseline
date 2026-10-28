@@ -277,6 +277,21 @@ fn discord_group(settings: &Rc<RefCell<Settings>>) -> adw::PreferencesGroup {
     ));
     group.add(&join);
 
+    let avatar = adw::SwitchRow::builder()
+        .title("Replace Roblox small image with your avatar head")
+        .active(settings.borrow().discord.show_avatar)
+        .build();
+    avatar.add_prefix(&row_prefix("avatar-default-symbolic"));
+    avatar.connect_active_notify(glib::clone!(
+        #[strong]
+        settings,
+        move |row| {
+            settings.borrow_mut().discord.show_avatar = row.is_active();
+            let _ = settings.borrow().save();
+        }
+    ));
+    group.add(&avatar);
+
     group
 }
 

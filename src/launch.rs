@@ -213,14 +213,19 @@ pub fn force_kill(pid: u32) {
     }
 }
 
-/// the presence while nothing is joined: Roblox icon, no small image.
+/// the presence while nothing is joined: Roblox logo, with the avatar head
+/// as the badge when wanted.
 pub fn idle_activity(settings: &Settings) -> crate::rpc::Activity {
     crate::rpc::Activity {
         details: settings.discord.details.clone(),
         state: settings.discord.state.clone(),
         started: now(),
         large_image: Some(crate::rpc::ROBLOX_LOGO.to_string()),
-        small_image: None,
+        small_image: if settings.discord.show_avatar {
+            crate::avatar::cached()
+        } else {
+            None
+        },
         buttons: Vec::new(),
     }
 }

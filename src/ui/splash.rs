@@ -57,6 +57,7 @@ struct Inner {
     joined: bool,
     started: Option<Instant>,
     rpc_attempts: u32,
+    avatar_fetching: bool,
 }
 
 thread_local! {
@@ -463,6 +464,9 @@ impl Splash {
         if !settings.discord.enabled || app_id.is_empty() {
             return;
         }
+        if settings.discord.show_avatar {
+            self.ensure_avatar();
+        }
         {
             let mut inner = self.inner.borrow_mut();
             inner.rpc_attempts = inner.rpc_attempts.wrapping_add(1);
@@ -528,6 +532,9 @@ impl Splash {
         self.inner.borrow_mut().game = Some(game.clone());
 
         let settings = Settings::load();
+        if settings.discord.enabled && settings.discord.show_avatar {
+            self.ensure_avatar();
+        }
         self.apply_presence(Some(&game), &settings);
     }
 
@@ -541,6 +548,9 @@ impl Splash {
             return;
         }
         let settings = Settings::load();
+        if settings.discord.enabled && settings.discord.show_avatar {
+            self.ensure_avatar();
+        }
         self.apply_presence(game.as_ref(), &settings);
     }
 
@@ -554,7 +564,12 @@ impl Splash {
                     large_image: (!game.cover_url.is_empty())
                         .then(|| game.cover_url.clone())
                         .or_else(|| Some(crate::rpc::ROBLOX_LOGO.to_string())),
-                    small_image: Some(crate::rpc::ROBLOX_LOGO.to_string()),
+                    small_image: if settings.discord.show_avatar {
+                        crate::avatar::cached()
+                    } else {
+                        None
+                    }
+                    .or_else(|| Some(crate::rpc::ROBLOX_LOGO.to_string())),
                     buttons: game_buttons(settings.discord.join_button, game),
                 }
             } else {
@@ -568,6 +583,27 @@ impl Splash {
         if let (Some(rpc), Some(pid)) = (inner.rpc.as_mut(), pid) {
             rpc.set(pid, &activity);
         }
+    }
+
+    fn ensure_avatar(self: &Rc<Self>) {
+        {
+            let inner = self.inner.borrow();
+            if inner.avatar_fetching || crate::avatar::ready() {
+                return;
+            }
+        }
+        self.inner.borrow_mut().avatar_fetching = true;
+        let (sender, receiver) = async_channel::bounded(1);
+        std::thread::spawn(move || {
+            let _ = sender.send_blocking(crate::avatar::headshot());
+        });
+        let splash = self.clone();
+        glib::spawn_future_local(async move {
+            if receiver.recv().await.is_ok() {
+                splash.inner.borrow_mut().avatar_fetching = false;
+                splash.refresh_presence();
+            }
+        });
     }
 
     fn left_game(self: &Rc<Self>, close: bool) {

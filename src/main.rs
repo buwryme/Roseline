@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
+mod avatar;
 mod config;
 mod cookies;
 mod flags;

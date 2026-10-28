@@ -108,6 +108,22 @@ pub fn build() -> adw::PreferencesPage {
     group.add(&show);
     group.add(&join);
 
+    let avatar = adw::SwitchRow::builder()
+        .title("Replace Roblox small image with your avatar head")
+        .active(settings.borrow().discord.show_avatar)
+        .build();
+    avatar.add_prefix(&row_prefix("avatar-default-symbolic"));
+    avatar.connect_active_notify(glib::clone!(
+        #[strong]
+        settings,
+        move |row| {
+            settings.borrow_mut().discord.show_avatar = row.is_active();
+            let _ = settings.borrow().save();
+            crate::ui::splash::refresh_presence();
+        }
+    ));
+    group.add(&avatar);
+
     let state = adw::EntryRow::builder()
         .title("Second line")
         .text(&settings.borrow().discord.state)

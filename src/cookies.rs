@@ -10,6 +10,7 @@ use std::collections::HashMap;
 use std::io::{Read, Write};
 use std::os::unix::fs::{OpenOptionsExt, PermissionsExt};
 use std::path::{Path, PathBuf};
+use std::sync::Mutex;
 
 use anyhow::{Context, Result};
 
@@ -25,6 +26,12 @@ const BRANDED_COOKIE: &str = "net.buwryy.Roseline.cookies.tsv";
 /// the pre-branding file, migrated from old installs.
 const LEGACY_COOKIE: &str = "com.roblox.RobloxPlayer.cookies.tsv";
 const SESSION_COOKIE: &str = ".ROBLOSECURITY";
+
+static SESSION: Mutex<Option<String>> = Mutex::new(None);
+
+pub fn session() -> Option<String> {
+    SESSION.lock().ok().and_then(|guard| guard.clone())
+}
 
 /// the keyring operations the migration needs, kept behind a trait so the
 /// flow is testable without a running secret service.
@@ -298,6 +305,9 @@ fn prepare_with(store: &dyn Store, paths: &Paths) -> Result<()> {
         files.remove_legacy()?;
         Ok(())
     })();
+    if let Ok(mut session) = SESSION.lock() {
+        *session = cached.clone();
+    }
     best_effort_purge(paths, cached.as_deref());
     result
 }
@@ -348,6 +358,11 @@ fn seal_with(store: &dyn Store, paths: &Paths) -> Result<()> {
         Ok(())
     })();
     best_effort_purge(paths, cached.as_deref());
+    if result.is_ok()
+        && let Ok(mut session) = SESSION.lock()
+    {
+        *session = None;
+    }
     result
 }
 

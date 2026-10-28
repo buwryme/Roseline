@@ -219,6 +219,8 @@ pub struct Discord {
     pub app_id: String,
     /// a Join Game button that opens the server the user is on.
     pub join_button: bool,
+    /// the avatar head replaces the Roblox small image while a game shows.
+    pub show_avatar: bool,
     pub details: String,
     pub state: String,
 }
@@ -237,6 +239,7 @@ impl Default for Discord {
             show_game: true,
             app_id: DEFAULT_APP_ID.to_string(),
             join_button: false,
+            show_avatar: false,
             details: "Roblox".into(),
             state: "via Roséline".into(),
         }
@@ -291,6 +294,7 @@ mod tests {
         assert!(!settings.server_location.enabled);
         assert!(settings.discord.show_game);
         assert!(!settings.discord.join_button);
+        assert!(!settings.discord.show_avatar);
         assert!(settings.flags.is_empty());
         assert!(settings.user_flags.is_empty());
         assert!(settings.environment.guest.is_empty());
