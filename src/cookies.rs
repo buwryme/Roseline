@@ -15,8 +15,11 @@ use anyhow::{Context, Result};
 
 use crate::config::Paths;
 
-/// the schema name shown by keyring browsers.
-const SCHEMA: &str = "net.buwryy.Roseline.Cookies";
+/// the schema name shown by keyring browsers. the first build used the
+/// plain name without a bottle attribute; a separate schema lets that item
+/// be cleared without touching a per-bottle one.
+const SCHEMA: &str = "net.buwryy.Roseline.Cookies.V2";
+const LEGACY_SCHEMA: &str = "net.buwryy.Roseline.Cookies";
 /// the client's own file, named after the branded bundle identifier.
 const BRANDED_COOKIE: &str = "net.buwryy.Roseline.cookies.tsv";
 /// the pre-branding file, migrated from old installs.
@@ -52,7 +55,9 @@ impl Store for Keyring {
             return Ok(value.map(|value| value.to_string()));
         }
         // the first build keyed items by user alone; move that item over
-        // rather than making anyone sign in again.
+        // rather than making anyone sign in again. it lives under a
+        // different schema, so clearing it cannot touch this one.
+        let schema = legacy_schema();
         let legacy = libsecret::password_lookup_sync(
             Some(&schema),
             legacy_attributes(key),
@@ -101,6 +106,17 @@ fn schema() -> libsecret::Schema {
             ("app", libsecret::SchemaAttributeType::String),
             ("profile", libsecret::SchemaAttributeType::String),
             ("bottle", libsecret::SchemaAttributeType::String),
+        ]),
+    )
+}
+
+fn legacy_schema() -> libsecret::Schema {
+    libsecret::Schema::new(
+        LEGACY_SCHEMA,
+        libsecret::SchemaFlags::NONE,
+        HashMap::from([
+            ("app", libsecret::SchemaAttributeType::String),
+            ("profile", libsecret::SchemaAttributeType::String),
         ]),
     )
 }
