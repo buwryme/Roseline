@@ -7,7 +7,7 @@
 //! the plaintext file is removed once it is safely in the keyring.
 
 use std::collections::HashMap;
-use std::io::Write;
+use std::io::{Read, Write};
 use std::os::unix::fs::{OpenOptionsExt, PermissionsExt};
 use std::path::{Path, PathBuf};
 
@@ -210,50 +210,62 @@ fn prepare_with(store: &dyn Store, paths: &Paths) -> Result<()> {
     };
     files.ensure_private_dir()?;
     let key = key(paths);
-    match files.read()? {
-        Some((Source::Branded, text)) if has_session(&text) => {
-            // the client's own file is the live jar, including the first
-            // launch after an upgrade; it wins over an older keyring copy.
-            // rewrite it so a jar left world-readable is closed down before
-            // the client starts.
-            store.set(&key, &text)?;
-            files.write(&text)?;
-        }
-        Some((Source::Branded, _)) => {
-            // signed out: do not restore a stale session later.
-            store.clear(&key)?;
-            files.remove()?;
-        }
-        Some((Source::Legacy, text)) => match store.get(&key) {
-            Ok(Some(stored)) if has_session(&stored) => {
-                // the keyring has already owned this bottle; a leftover
-                // legacy file must not sign anyone back in.
-                files.write(&stored)?;
-            }
-            Ok(Some(_)) => {
-                store.clear(&key)?;
-                files.remove()?;
-            }
-            Ok(None) if has_session(&text) => {
-                // first run after upgrading from the pre-keyring build.
+    let mut cached = None;
+    let result = (|| -> Result<()> {
+        match files.read()? {
+            Some((Source::Branded, text)) if has_session(&text) => {
+                // the client's own file is the live jar, including the first
+                // launch after an upgrade; it wins over an older keyring copy.
+                // rewrite it so a jar left world-readable is closed down before
+                // the client starts.
+                cached = session_value(&text).map(str::to_string);
                 store.set(&key, &text)?;
                 files.write(&text)?;
             }
-            Ok(None) => files.remove()?,
-            Err(error) => {
-                // the client reads the branded name; leave it a working
-                // session while the keyring error is reported.
-                files.write(&text)?;
-                return Err(error);
+            Some((Source::Branded, _)) => {
+                // signed out: do not restore a stale session later.
+                store.clear(&key)?;
+                files.remove()?;
             }
-        },
-        None => match store.get(&key)? {
-            Some(text) if has_session(&text) => files.write(&text)?,
-            Some(_) => store.clear(&key)?,
-            None => {}
-        },
-    }
-    Ok(())
+            Some((Source::Legacy, text)) => match store.get(&key) {
+                Ok(Some(stored)) if has_session(&stored) => {
+                    // the keyring has already owned this bottle; a leftover
+                    // legacy file must not sign anyone back in.
+                    cached = session_value(&stored).map(str::to_string);
+                    files.write(&stored)?;
+                }
+                Ok(Some(_)) => {
+                    store.clear(&key)?;
+                    files.remove()?;
+                }
+                Ok(None) if has_session(&text) => {
+                    // first run after upgrading from the pre-keyring build.
+                    cached = session_value(&text).map(str::to_string);
+                    store.set(&key, &text)?;
+                    files.write(&text)?;
+                }
+                Ok(None) => files.remove()?,
+                Err(error) => {
+                    // the client reads the branded name; leave it a working
+                    // session while the keyring error is reported.
+                    cached = session_value(&text).map(str::to_string);
+                    files.write(&text)?;
+                    return Err(error);
+                }
+            },
+            None => match store.get(&key)? {
+                Some(text) if has_session(&text) => {
+                    cached = session_value(&text).map(str::to_string);
+                    files.write(&text)?;
+                }
+                Some(_) => store.clear(&key)?,
+                None => {}
+            },
+        }
+        Ok(())
+    })();
+    best_effort_purge(paths, cached.as_deref());
+    result
 }
 
 /// after the client exits: save its jar, then remove the plaintext copies.
@@ -282,21 +294,27 @@ fn seal_with(store: &dyn Store, paths: &Paths) -> Result<()> {
     };
     files.ensure_private_dir()?;
     let key = key(paths);
-    match files.read()? {
-        Some((_, text)) if has_session(&text) => {
-            store.set(&key, &text)?;
-            files.remove()?;
+    let mut cached = None;
+    let result = (|| -> Result<()> {
+        match files.read()? {
+            Some((_, text)) if has_session(&text) => {
+                cached = session_value(&text).map(str::to_string);
+                store.set(&key, &text)?;
+                files.remove()?;
+            }
+            Some(_) => {
+                store.clear(&key)?;
+                files.remove()?;
+            }
+            None => {
+                // the client may have removed the jar when signing out.
+                store.clear(&key)?;
+            }
         }
-        Some(_) => {
-            store.clear(&key)?;
-            files.remove()?;
-        }
-        None => {
-            // the client may have removed the jar when signing out.
-            store.clear(&key)?;
-        }
-    }
-    Ok(())
+        Ok(())
+    })();
+    best_effort_purge(paths, cached.as_deref());
+    result
 }
 
 fn key(paths: &Paths) -> Key {
@@ -313,12 +331,95 @@ fn key(paths: &Paths) -> Key {
     }
 }
 
-fn has_session(text: &str) -> bool {
-    text.lines().any(|line| {
+fn session_value(text: &str) -> Option<&str> {
+    text.lines().find_map(|line| {
         let mut fields = line.split('\t');
-        fields.next() == Some(SESSION_COOKIE)
-            && fields.next().is_some_and(|value| !value.trim().is_empty())
+        (fields.next() == Some(SESSION_COOKIE))
+            .then(|| fields.next())
+            .flatten()
+            .filter(|value| !value.trim().is_empty())
     })
+}
+
+fn has_session(text: &str) -> bool {
+    session_value(text).is_some()
+}
+
+/// cached responses can carry the cookie header; they are safe to drop and
+/// must not outlive the plaintext jar.
+fn purge_cached_copies(paths: &Paths, session: Option<&str>) -> Result<usize> {
+    let Some(user) = paths.guest_user() else {
+        return Ok(0);
+    };
+    let mut needles: Vec<&[u8]> = vec![b".ROBLOSECURITY="];
+    // a real session cookie is long; a short value would match half the cache.
+    if let Some(session) = session.filter(|value| value.len() >= 16) {
+        needles.push(session.as_bytes());
+    }
+    let mut removed = 0;
+    for name in ["Library/Caches", "Library/WebKit", "Library/Logs"] {
+        walk_and_purge(&user.join(name), &needles, &mut removed)?;
+    }
+    // Roseline's own launch log tails the client; it must not keep a copy.
+    walk_and_purge(&paths.logs(), &needles, &mut removed)?;
+    Ok(removed)
+}
+
+fn walk_and_purge(dir: &Path, needles: &[&[u8]], removed: &mut usize) -> Result<()> {
+    let entries = match std::fs::read_dir(dir) {
+        Ok(entries) => entries,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(()),
+        Err(error) => {
+            return Err(error).with_context(|| format!("reading {}", dir.display()));
+        }
+    };
+    for entry in entries {
+        let entry = entry.with_context(|| format!("reading {}", dir.display()))?;
+        let file_type = entry
+            .file_type()
+            .with_context(|| format!("reading {}", entry.path().display()))?;
+        if file_type.is_dir() {
+            walk_and_purge(&entry.path(), needles, removed)?;
+        } else if file_type.is_file() && file_contains(&entry.path(), needles)? {
+            std::fs::remove_file(entry.path())
+                .with_context(|| format!("removing {}", entry.path().display()))?;
+            *removed += 1;
+        }
+    }
+    Ok(())
+}
+
+fn file_contains(path: &Path, needles: &[&[u8]]) -> Result<bool> {
+    let mut file =
+        std::fs::File::open(path).with_context(|| format!("reading {}", path.display()))?;
+    let keep = needles.iter().map(|needle| needle.len()).max().unwrap_or(0);
+    let keep = keep.saturating_sub(1);
+    let mut tail = Vec::new();
+    let mut buffer = [0u8; 64 * 1024];
+    loop {
+        let read = file
+            .read(&mut buffer)
+            .with_context(|| format!("reading {}", path.display()))?;
+        if read == 0 {
+            return Ok(false);
+        }
+        tail.extend_from_slice(&buffer[..read]);
+        if needles
+            .iter()
+            .any(|needle| tail.windows(needle.len()).any(|window| window == *needle))
+        {
+            return Ok(true);
+        }
+        if tail.len() > keep {
+            tail.drain(..tail.len() - keep);
+        }
+    }
+}
+
+fn best_effort_purge(paths: &Paths, session: Option<&str>) {
+    if let Err(error) = purge_cached_copies(paths, session) {
+        eprintln!("roseline: could not remove cached Roblox cookies: {error:#}");
+    }
 }
 
 fn write_private(path: &Path, text: &str) -> Result<()> {
@@ -451,6 +552,69 @@ mod tests {
         assert_eq!(mode(&files.branded), 0o600);
         assert_eq!(mode(&files.legacy), 0o600);
         assert_eq!(mode(&files.dir), 0o700);
+        let _ = std::fs::remove_dir_all(&paths.data);
+    }
+
+    #[test]
+    fn cached_cookie_headers_are_removed() {
+        let paths = temp_paths("cache");
+        let user = paths.guest_user().unwrap();
+        let caches = user.join("Library/Caches/net.buwryy.Roseline");
+        let webkit = user.join("Library/WebKit/net.buwryy.Roseline");
+        let logs = user.join("Library/Logs/Roblox");
+        for dir in [&caches, &webkit, &logs] {
+            std::fs::create_dir_all(dir).unwrap();
+        }
+        std::fs::write(
+            caches.join("response"),
+            "Cookie: .ROBLOSECURITY=old-value; rbx-ip2=1",
+        )
+        .unwrap();
+        std::fs::write(
+            webkit.join("state"),
+            "token secret-value-that-is-long-enough here",
+        )
+        .unwrap();
+        std::fs::write(
+            logs.join("player.log"),
+            ".ROBLOSECURITY=secret-value-that-is-long-enough",
+        )
+        .unwrap();
+        std::fs::write(caches.join("unrelated"), "nothing to see").unwrap();
+        std::fs::create_dir_all(paths.logs()).unwrap();
+        std::fs::write(
+            paths.logs().join("launch-1.log"),
+            "header .ROBLOSECURITY=secret-value",
+        )
+        .unwrap();
+
+        let removed =
+            purge_cached_copies(&paths, Some("secret-value-that-is-long-enough")).unwrap();
+
+        assert_eq!(removed, 4);
+        assert!(!caches.join("response").exists());
+        assert!(!webkit.join("state").exists());
+        assert!(!logs.join("player.log").exists());
+        assert!(!paths.logs().join("launch-1.log").exists());
+        assert!(caches.join("unrelated").exists());
+        let _ = std::fs::remove_dir_all(&paths.data);
+    }
+
+    #[test]
+    fn cached_headers_are_removed_even_without_a_session() {
+        let paths = temp_paths("cache-logout");
+        let user = paths.guest_user().unwrap();
+        let caches = user.join("Library/Caches/net.buwryy.Roseline");
+        std::fs::create_dir_all(&caches).unwrap();
+        std::fs::write(caches.join("response"), "Cookie: .ROBLOSECURITY=old-value").unwrap();
+        std::fs::write(caches.join("unrelated"), "1").unwrap();
+
+        // a one-byte session value must not be used as a needle.
+        let removed = purge_cached_copies(&paths, Some("1")).unwrap();
+
+        assert_eq!(removed, 1);
+        assert!(!caches.join("response").exists());
+        assert!(caches.join("unrelated").exists());
         let _ = std::fs::remove_dir_all(&paths.data);
     }
 
