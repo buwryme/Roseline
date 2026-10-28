@@ -89,6 +89,11 @@ impl Paths {
         self.data.join("font-backup")
     }
 
+    /// the stock avatar background and the mod that replaces it.
+    pub fn avatar_background(&self) -> PathBuf {
+        self.data.join("avatar-background")
+    }
+
     /// imported copies of the fonts the user picked.
     pub fn font_store(&self) -> PathBuf {
         self.data.join("fonts")

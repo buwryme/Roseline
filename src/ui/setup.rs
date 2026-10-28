@@ -316,6 +316,22 @@ fn player_group(settings: &Rc<RefCell<Settings>>) -> adw::PreferencesGroup {
         }
     ));
     group.add(&close);
+
+    let old = adw::SwitchRow::builder()
+        .title("Old avatar editor background")
+        .subtitle("Swaps the avatar editor background with the classic one.")
+        .active(settings.borrow().avatar_background.old)
+        .build();
+    old.add_prefix(&row_prefix("camera-photo-symbolic"));
+    old.connect_active_notify(glib::clone!(
+        #[strong]
+        settings,
+        move |row| {
+            settings.borrow_mut().avatar_background.old = row.is_active();
+            let _ = settings.borrow().save();
+        }
+    ));
+    group.add(&old);
     group
 }
 

@@ -25,6 +25,7 @@ pub struct Settings {
     pub user_flags: BTreeMap<String, String>,
     pub discord: Discord,
     pub server_location: ServerLocation,
+    pub avatar_background: AvatarBackground,
     pub behavior: Behavior,
     pub environment: Environment,
 }
@@ -209,6 +210,13 @@ pub struct Behavior {
     pub close_on_leave: bool,
 }
 
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(default)]
+pub struct AvatarBackground {
+    /// Bloxstrap's old-background mod, fetched from its repository.
+    pub old: bool,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default)]
 pub struct Discord {
@@ -292,6 +300,7 @@ mod tests {
         assert!(settings.runner.is_none());
         assert!(!settings.discord.enabled);
         assert!(!settings.server_location.enabled);
+        assert!(!settings.avatar_background.old);
         assert!(settings.discord.show_game);
         assert!(!settings.discord.join_button);
         assert!(!settings.discord.show_avatar);

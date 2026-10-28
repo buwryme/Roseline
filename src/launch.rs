@@ -186,6 +186,10 @@ fn prepare_bottle(progress: &Progress, settings: &Settings) -> Result<()> {
     crate::roblox::brand()?;
     crate::overlay::apply(progress)?;
     crate::fonts::apply(settings)?;
+    if let Err(error) = crate::background::apply(settings, progress) {
+        // a cosmetic mod must not stop the launch.
+        eprintln!("roseline: could not apply the avatar background mod: {error:#}");
+    }
     crate::flags::write(settings)?;
     Ok(())
 }

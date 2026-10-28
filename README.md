@@ -106,6 +106,8 @@ make install PREFIX=~/.local
 
 Rosemary and Butter by MicroliftHQ, which is what shaped Roséline
 
+Bloxstrap, for the old avatar editor background
+
 ## License
 
 Licensed GPL-3.0-or-later, with additional terms:
