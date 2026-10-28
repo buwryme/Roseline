@@ -193,7 +193,7 @@ jobs:
   arch:
     name: Arch package (${{ matrix.arch }})
     needs: validate
-    if: ${{ inputs.build_arch && (matrix.arch == 'x86_64' || inputs.build_arch_arm64) }}
+    if: ${{ inputs.build_arch }}
     strategy:
       fail-fast: false
       matrix:
@@ -222,6 +222,7 @@ jobs:
           ref: ${{ inputs.commit }}
           fetch-depth: 0
       - name: Build package
+        if: ${{ matrix.arch == 'x86_64' || inputs.build_arch_arm64 }}
         env:
           PKG_VERSION: ${{ needs.validate.outputs.package_version }}
         run: |
@@ -235,6 +236,7 @@ jobs:
           su builder -s /bin/bash -c "cd '$PWD/build' && makepkg --noconfirm --nocheck"
           ls -l build/*.pkg.tar.zst
       - uses: actions/upload-artifact@v7
+        if: ${{ matrix.arch == 'x86_64' || inputs.build_arch_arm64 }}
         with:
           name: arch-${{ matrix.arch }}
           path: build/roseline-${{ needs.validate.outputs.package_version }}-1-${{ matrix.arch }}.pkg.tar.zst
@@ -243,7 +245,7 @@ jobs:
   rpm:
     name: Fedora RPM (${{ matrix.arch }})
     needs: validate
-    if: ${{ inputs.build_rpm && (matrix.arch == 'x86_64' || inputs.build_rpm_arm64) }}
+    if: ${{ inputs.build_rpm }}
     strategy:
       fail-fast: false
       matrix:
@@ -264,6 +266,7 @@ jobs:
           ref: ${{ inputs.commit }}
           fetch-depth: 0
       - name: Build package
+        if: ${{ matrix.arch == 'x86_64' || inputs.build_rpm_arm64 }}
         env:
           PKG_VERSION: ${{ needs.validate.outputs.package_version }}
         run: |
@@ -277,6 +280,7 @@ jobs:
           cp rpmbuild/RPMS/*/*.rpm build/
           ls -l build/*.rpm
       - uses: actions/upload-artifact@v7
+        if: ${{ matrix.arch == 'x86_64' || inputs.build_rpm_arm64 }}
         with:
           name: rpm-${{ matrix.arch }}
           path: build/*.rpm
@@ -285,7 +289,7 @@ jobs:
   deb:
     name: Debian package (${{ matrix.arch }})
     needs: validate
-    if: ${{ inputs.build_deb && (matrix.arch == 'x86_64' || inputs.build_deb_arm64) }}
+    if: ${{ inputs.build_deb }}
     strategy:
       fail-fast: false
       matrix:
@@ -306,6 +310,7 @@ jobs:
           ref: ${{ inputs.commit }}
           fetch-depth: 0
       - name: Build package
+        if: ${{ matrix.arch == 'x86_64' || inputs.build_deb_arm64 }}
         run: |
           set -euo pipefail
           apt-get install -y build-essential pkg-config libgtk-4-dev libadwaita-1-dev libsecret-1-dev libglib2.0-dev curl
@@ -315,6 +320,7 @@ jobs:
           ./build-aux/make-deb.sh
           ls -l build/*.deb
       - uses: actions/upload-artifact@v7
+        if: ${{ matrix.arch == 'x86_64' || inputs.build_deb_arm64 }}
         with:
           name: deb-${{ matrix.arch }}
           path: build/*.deb
@@ -323,7 +329,7 @@ jobs:
   appimage:
     name: AppImage (${{ matrix.arch }})
     needs: validate
-    if: ${{ inputs.build_appimage && (matrix.arch == 'x86_64' || inputs.build_appimage_arm64) }}
+    if: ${{ inputs.build_appimage }}
     strategy:
       fail-fast: false
       matrix:
@@ -344,6 +350,7 @@ jobs:
           ref: ${{ inputs.commit }}
           fetch-depth: 0
       - name: Build package
+        if: ${{ matrix.arch == 'x86_64' || inputs.build_appimage_arm64 }}
         run: |
           set -euo pipefail
           apt-get install -y build-essential pkg-config libgtk-4-dev libadwaita-1-dev libsecret-1-dev \
@@ -353,6 +360,7 @@ jobs:
           ./build-aux/make-appimage.sh
           ls -l build/*.AppImage
       - uses: actions/upload-artifact@v7
+        if: ${{ matrix.arch == 'x86_64' || inputs.build_appimage_arm64 }}
         with:
           name: appimage-${{ matrix.arch }}
           path: build/*.AppImage
@@ -405,7 +413,7 @@ jobs:
   nix:
     name: Nix build (${{ matrix.arch }})
     needs: validate
-    if: ${{ inputs.build_nix && (matrix.arch == 'x86_64' || inputs.build_nix_arm64) }}
+    if: ${{ inputs.build_nix }}
     strategy:
       fail-fast: false
       matrix:
@@ -424,6 +432,7 @@ jobs:
           extra_nix_config: |
             experimental-features = nix-command flakes
       - name: Build package
+        if: ${{ matrix.arch == 'x86_64' || inputs.build_nix_arm64 }}
         env:
           VERSION: ${{ needs.validate.outputs.version }}
         run: |
@@ -435,6 +444,7 @@ jobs:
           tar -C build/nix -cJf "build/roseline-$VERSION-${{ matrix.arch }}-nix.tar.xz" .
           ls -l build/*nix.tar.xz
       - uses: actions/upload-artifact@v7
+        if: ${{ matrix.arch == 'x86_64' || inputs.build_nix_arm64 }}
         with:
           name: nix-${{ matrix.arch }}
           path: build/*nix.tar.xz
