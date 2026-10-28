@@ -17,32 +17,57 @@ on:
         type: string
         default: ""
       build_arch:
-        description: "Include Arch Linux build?"
+        description: "Include Arch Linux x86_64 build?"
+        required: true
+        type: boolean
+        default: true
+      build_arch_arm64:
+        description: "Include Arch Linux ARM64 build?"
         required: true
         type: boolean
         default: true
       build_rpm:
-        description: "Include Fedora RPM build?"
+        description: "Include Fedora x86_64 RPM build?"
+        required: true
+        type: boolean
+        default: true
+      build_rpm_arm64:
+        description: "Include Fedora ARM64 RPM build?"
         required: true
         type: boolean
         default: true
       build_deb:
-        description: "Include Debian build?"
+        description: "Include Debian x86_64 build?"
+        required: true
+        type: boolean
+        default: true
+      build_deb_arm64:
+        description: "Include Debian ARM64 build?"
         required: true
         type: boolean
         default: true
       build_flatpak:
-        description: "Include Flatpak build?"
+        description: "Include Flatpak build? x86_64 only"
         required: true
         type: boolean
         default: true
       build_appimage:
-        description: "Include AppImage build?"
+        description: "Include x86_64 AppImage build?"
+        required: true
+        type: boolean
+        default: true
+      build_appimage_arm64:
+        description: "Include ARM64 AppImage build?"
         required: true
         type: boolean
         default: true
       build_nix:
-        description: "Include Nix build?"
+        description: "Include Nix x86_64 build?"
+        required: true
+        type: boolean
+        default: true
+      build_nix_arm64:
+        description: "Include Nix ARM64 build?"
         required: true
         type: boolean
         default: true
@@ -77,11 +102,16 @@ jobs:
           RAW_VERSION: ${{ inputs.version }}
           REUSE_RUN: ${{ inputs.reuse_run }}
           BUILD_ARCH: ${{ inputs.build_arch }}
+          BUILD_ARCH_ARM64: ${{ inputs.build_arch_arm64 }}
           BUILD_RPM: ${{ inputs.build_rpm }}
+          BUILD_RPM_ARM64: ${{ inputs.build_rpm_arm64 }}
           BUILD_DEB: ${{ inputs.build_deb }}
+          BUILD_DEB_ARM64: ${{ inputs.build_deb_arm64 }}
           BUILD_FLATPAK: ${{ inputs.build_flatpak }}
           BUILD_APPIMAGE: ${{ inputs.build_appimage }}
+          BUILD_APPIMAGE_ARM64: ${{ inputs.build_appimage_arm64 }}
           BUILD_NIX: ${{ inputs.build_nix }}
+          BUILD_NIX_ARM64: ${{ inputs.build_nix_arm64 }}
         run: |
           set -euo pipefail
 
@@ -136,7 +166,9 @@ jobs:
           fi
 
           selected=0
-          for flag in "$BUILD_ARCH" "$BUILD_RPM" "$BUILD_DEB" "$BUILD_FLATPAK" "$BUILD_APPIMAGE" "$BUILD_NIX"; do
+          for flag in "$BUILD_ARCH" "$BUILD_ARCH_ARM64" "$BUILD_RPM" "$BUILD_RPM_ARM64" \
+            "$BUILD_DEB" "$BUILD_DEB_ARM64" "$BUILD_FLATPAK" \
+            "$BUILD_APPIMAGE" "$BUILD_APPIMAGE_ARM64" "$BUILD_NIX" "$BUILD_NIX_ARM64"; do
             if [ "$flag" = "true" ]; then
               selected=1
             fi
@@ -161,7 +193,7 @@ jobs:
   arch:
     name: Arch package (${{ matrix.arch }})
     needs: validate
-    if: ${{ inputs.build_arch }}
+    if: ${{ inputs.build_arch && (matrix.arch == 'x86_64' || inputs.build_arch_arm64) }}
     strategy:
       fail-fast: false
       matrix:
@@ -211,7 +243,7 @@ jobs:
   rpm:
     name: Fedora RPM (${{ matrix.arch }})
     needs: validate
-    if: ${{ inputs.build_rpm }}
+    if: ${{ inputs.build_rpm && (matrix.arch == 'x86_64' || inputs.build_rpm_arm64) }}
     strategy:
       fail-fast: false
       matrix:
@@ -253,7 +285,7 @@ jobs:
   deb:
     name: Debian package (${{ matrix.arch }})
     needs: validate
-    if: ${{ inputs.build_deb }}
+    if: ${{ inputs.build_deb && (matrix.arch == 'x86_64' || inputs.build_deb_arm64) }}
     strategy:
       fail-fast: false
       matrix:
@@ -291,7 +323,7 @@ jobs:
   appimage:
     name: AppImage (${{ matrix.arch }})
     needs: validate
-    if: ${{ inputs.build_appimage }}
+    if: ${{ inputs.build_appimage && (matrix.arch == 'x86_64' || inputs.build_appimage_arm64) }}
     strategy:
       fail-fast: false
       matrix:
@@ -327,16 +359,10 @@ jobs:
           if-no-files-found: error
 
   flatpak:
-    name: Flatpak (${{ matrix.arch }})
+    name: Flatpak
     needs: validate
     if: ${{ inputs.build_flatpak }}
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - { arch: x86_64, runner: ubuntu-latest }
-          - { arch: aarch64, runner: ubuntu-24.04-arm }
-    runs-on: ${{ matrix.runner }}
+    runs-on: ubuntu-latest
     timeout-minutes: 120
     container:
       image: ghcr.io/flathub-infra/flatpak-github-actions:gnome-51
@@ -359,10 +385,10 @@ jobs:
       - name: Build bundle
         uses: flatpak/flatpak-github-actions/flatpak-builder@v6
         with:
-          bundle: Roseline-${{ needs.validate.outputs.version }}-${{ matrix.arch }}.flatpak
+          bundle: Roseline-${{ needs.validate.outputs.version }}-x86_64.flatpak
           manifest-path: build-aux/net.buwryy.Roseline.yml
-          arch: ${{ matrix.arch }}
-          cache-key: roseline-flatpak-${{ matrix.arch }}-${{ inputs.commit }}
+          arch: x86_64
+          cache-key: roseline-flatpak-x86_64-${{ inputs.commit }}
           upload-artifact: "false"
       - name: Stage bundle
         run: |
@@ -379,7 +405,7 @@ jobs:
   nix:
     name: Nix build (${{ matrix.arch }})
     needs: validate
-    if: ${{ inputs.build_nix }}
+    if: ${{ inputs.build_nix && (matrix.arch == 'x86_64' || inputs.build_nix_arm64) }}
     strategy:
       fail-fast: false
       matrix:
@@ -458,11 +484,16 @@ jobs:
           VERSION: ${{ needs.validate.outputs.version }}
           PKG_VERSION: ${{ needs.validate.outputs.package_version }}
           BUILD_ARCH: ${{ inputs.build_arch }}
+          BUILD_ARCH_ARM64: ${{ inputs.build_arch_arm64 }}
           BUILD_RPM: ${{ inputs.build_rpm }}
+          BUILD_RPM_ARM64: ${{ inputs.build_rpm_arm64 }}
           BUILD_DEB: ${{ inputs.build_deb }}
+          BUILD_DEB_ARM64: ${{ inputs.build_deb_arm64 }}
           BUILD_FLATPAK: ${{ inputs.build_flatpak }}
           BUILD_APPIMAGE: ${{ inputs.build_appimage }}
+          BUILD_APPIMAGE_ARM64: ${{ inputs.build_appimage_arm64 }}
           BUILD_NIX: ${{ inputs.build_nix }}
+          BUILD_NIX_ARM64: ${{ inputs.build_nix_arm64 }}
           REUSE_RUN: ${{ inputs.reuse_run }}
         run: |
           set -euo pipefail
@@ -481,27 +512,18 @@ jobs:
             fi
           }
 
-          for arch in x86_64 aarch64; do
-            case "$arch" in
-              x86_64) deb_arch=amd64 ;;
-              aarch64) deb_arch=arm64 ;;
-            esac
-            maybe_require "$BUILD_ARCH" "roseline-$PKG_VERSION-1-$arch.pkg.tar.zst"
-            maybe_require "$BUILD_RPM" "roseline-$PKG_VERSION-1.*.$arch.rpm"
-            maybe_require "$BUILD_DEB" "roseline_${VERSION}_$deb_arch.deb"
-            maybe_require "$BUILD_FLATPAK" "Roseline-$VERSION-$arch.flatpak"
-            maybe_require "$BUILD_APPIMAGE" "Roseline-$VERSION-$arch.AppImage"
-            maybe_require "$BUILD_NIX" "roseline-$VERSION-$arch-nix.tar.xz"
+          maybe_require "$BUILD_ARCH" "roseline-$PKG_VERSION-1-x86_64.pkg.tar.zst"
+          maybe_require "$BUILD_ARCH_ARM64" "roseline-$PKG_VERSION-1-aarch64.pkg.tar.zst"
+          maybe_require "$BUILD_RPM" "roseline-$PKG_VERSION-1.*.x86_64.rpm"
+          maybe_require "$BUILD_RPM_ARM64" "roseline-$PKG_VERSION-1.*.aarch64.rpm"
+          maybe_require "$BUILD_DEB" "roseline_${VERSION}_amd64.deb"
+          maybe_require "$BUILD_DEB_ARM64" "roseline_${VERSION}_arm64.deb"
+          maybe_require "$BUILD_FLATPAK" "Roseline-$VERSION-x86_64.flatpak"
+          maybe_require "$BUILD_APPIMAGE" "Roseline-$VERSION-x86_64.AppImage"
+          maybe_require "$BUILD_APPIMAGE_ARM64" "Roseline-$VERSION-aarch64.AppImage"
+          maybe_require "$BUILD_NIX" "roseline-$VERSION-x86_64-nix.tar.xz"
+          maybe_require "$BUILD_NIX_ARM64" "roseline-$VERSION-aarch64-nix.tar.xz"
 
-            if [ -n "${REUSE_RUN:-}" ]; then
-              require "roseline-$PKG_VERSION-1-$arch.pkg.tar.zst"
-              require "roseline-$PKG_VERSION-1.*.$arch.rpm"
-              require "roseline_${VERSION}_$deb_arch.deb"
-              require "Roseline-$VERSION-$arch.flatpak"
-              require "Roseline-$VERSION-$arch.AppImage"
-              require "roseline-$VERSION-$arch-nix.tar.xz"
-            fi
-          done
           if [ -n "${REUSE_RUN:-}" ]; then
             echo "reused run ids: $REUSE_RUN"
           fi
