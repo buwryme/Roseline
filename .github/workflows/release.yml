@@ -207,7 +207,10 @@ jobs:
             image: menci/archlinuxarm:latest
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 90
-    container: ${{ matrix.image }}
+    container:
+      # github's arm runners cannot apply pacman's landlock sandbox
+      image: ${{ matrix.image }}
+      options: --privileged
     defaults:
       run:
         shell: bash
