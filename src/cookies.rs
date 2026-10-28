@@ -200,15 +200,23 @@ impl Files {
 
     fn remove(&self) -> Result<()> {
         for path in self.paths() {
-            match std::fs::remove_file(path) {
-                Ok(()) => {}
-                Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
-                Err(error) => {
-                    return Err(error).with_context(|| format!("removing {}", path.display()));
-                }
-            }
+            remove_quietly(path)?;
         }
         Ok(())
+    }
+
+    /// the legacy name is only a migration source; once it has been read it
+    /// must not be able to bring an old session back.
+    fn remove_legacy(&self) -> Result<()> {
+        remove_quietly(&self.legacy)
+    }
+}
+
+fn remove_quietly(path: &Path) -> Result<()> {
+    match std::fs::remove_file(path) {
+        Ok(()) => Ok(()),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(()),
+        Err(error) => Err(error).with_context(|| format!("removing {}", path.display())),
     }
 }
 
@@ -278,6 +286,7 @@ fn prepare_with(store: &dyn Store, paths: &Paths) -> Result<()> {
                 None => {}
             },
         }
+        files.remove_legacy()?;
         Ok(())
     })();
     best_effort_purge(paths, cached.as_deref());
@@ -575,9 +584,8 @@ mod tests {
 
         assert_eq!(store.value.borrow().as_deref(), Some(JAR));
         assert_eq!(std::fs::read_to_string(&files.branded).unwrap(), JAR);
-        assert_eq!(std::fs::read_to_string(&files.legacy).unwrap(), JAR);
+        assert!(!files.legacy.exists());
         assert_eq!(mode(&files.branded), 0o600);
-        assert_eq!(mode(&files.legacy), 0o600);
         assert_eq!(mode(&files.dir), 0o700);
         let _ = std::fs::remove_dir_all(&paths.data);
     }
@@ -661,7 +669,7 @@ mod tests {
 
         assert_eq!(store.value.borrow().as_deref(), Some(JAR));
         assert_eq!(std::fs::read_to_string(&files.branded).unwrap(), JAR);
-        assert_eq!(std::fs::read_to_string(&files.legacy).unwrap(), JAR);
+        assert!(!files.legacy.exists());
         let _ = std::fs::remove_dir_all(&paths.data);
     }
 
@@ -679,7 +687,7 @@ mod tests {
 
         assert_eq!(store.value.borrow().as_deref(), Some(JAR));
         assert_eq!(std::fs::read_to_string(&files.branded).unwrap(), JAR);
-        assert_eq!(std::fs::read_to_string(&files.legacy).unwrap(), JAR);
+        assert!(!files.legacy.exists());
         let _ = std::fs::remove_dir_all(&paths.data);
     }
 
@@ -700,7 +708,7 @@ mod tests {
     }
 
     #[test]
-    fn a_stored_jar_is_restored_to_both_names() {
+    fn a_stored_jar_is_restored_to_the_branded_name() {
         let paths = temp_paths("restore");
         let files = files(&paths);
         let store = Memory::default();
@@ -709,9 +717,8 @@ mod tests {
         prepare_with(&store, &paths).unwrap();
 
         assert_eq!(std::fs::read_to_string(&files.branded).unwrap(), JAR);
-        assert_eq!(std::fs::read_to_string(&files.legacy).unwrap(), JAR);
+        assert!(!files.legacy.exists());
         assert_eq!(mode(&files.branded), 0o600);
-        assert_eq!(mode(&files.legacy), 0o600);
         assert_eq!(mode(&files.dir), 0o700);
         let _ = std::fs::remove_dir_all(&paths.data);
     }
