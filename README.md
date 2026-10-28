@@ -93,7 +93,7 @@ make install PREFIX=~/.local
 ## Security
 
 - Session cookies are stored using `libsecret`. Decrypted into plaintext during sessions only, whereas closing the game encrypts it back up and deletes the cookie.
-  Existing cookies are migrated automatically. This is enforced.
+  Existing cookies are migrated automatically. This feature is enforced, for more security.
 
 ## Note:
 
