@@ -1,5 +1,5 @@
 PREFIX ?= /usr/local
-VERSION := 0.1.1-hotfix1
+VERSION := 0.1.2
 PKG_VERSION := $(subst -,.,$(VERSION))
 ARCH ?= $(shell uname -m)
 CARGO ?= cargo

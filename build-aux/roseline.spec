@@ -2,7 +2,7 @@
 %global debug_package %{nil}
 
 Name:           roseline
-Version:        0.1.1.hotfix1
+Version:        0.1.2
 Release:        1%{?dist}
 Summary:        Run Roblox with Rosemary on Linux
 
@@ -50,6 +50,8 @@ install -Dm644 "NOTICE" "%{buildroot}%{_licensedir}/roseline/NOTICE"
 %license %{_licensedir}/roseline/NOTICE
 
 %changelog
+* Wed Oct 28 2026 buwryme <hello@buwryy.net> - 0.1.2-1
+- Store the Roblox session in libsecret, close the client on leave, and add manual fastflags
 * Tue Oct 27 2026 buwryme <hello@buwryy.net> - 0.1.1.hotfix1-1
 - Keep Roblox updates under Roseline and pin the checked Rosemary release
 * Fri Oct 23 2026 buwryme <hello@buwryy.net> - 0.1.1-1
