@@ -33,7 +33,7 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install --no-install-recommends -y \
-            build-essential pkg-config libgtk-4-dev libadwaita-1-dev libglib2.0-dev
+            build-essential pkg-config libgtk-4-dev libadwaita-1-dev libsecret-1-dev libglib2.0-dev
       - name: Install Rust
         run: |
           rustup toolchain install stable --profile minimal --component rustfmt

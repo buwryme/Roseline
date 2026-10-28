@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 mod config;
+mod cookies;
 mod flags;
 mod fonts;
 mod gameinfo;

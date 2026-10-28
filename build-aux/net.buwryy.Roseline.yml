@@ -13,6 +13,8 @@ finish-args:
   - --socket=fallback-x11
   - --device=dri
   - --socket=pulseaudio
+  # the session jar lives in the host's secret service
+  - --talk-name=org.freedesktop.secrets
   # lets the host's ~/.config/gtk-4.0/gtk.css apply inside the sandbox.
   - --filesystem=xdg-config/gtk-4.0:ro
   # the discord bridges put their ipc sockets in the runtime dir

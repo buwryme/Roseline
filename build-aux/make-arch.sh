@@ -30,6 +30,7 @@ arch = ${arch}
 license = GPL-3.0-or-later
 depend = gtk4
 depend = libadwaita
+depend = libsecret
 EOF
 
 mkdir -p build

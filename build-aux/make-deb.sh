@@ -26,7 +26,7 @@ Version: ${version}
 Architecture: ${deb_arch}
 Maintainer: buwryme <hello@buwryy.net>
 Installed-Size: ${installed_size}
-Depends: libgtk-4-1, libadwaita-1-0
+Depends: libgtk-4-1, libadwaita-1-0, libsecret-1-0
 Section: games
 Priority: optional
 Homepage: https://github.com/buwryme/Roseline

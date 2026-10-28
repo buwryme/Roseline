@@ -194,7 +194,7 @@ jobs:
           PKG_VERSION: ${{ needs.validate.outputs.package_version }}
         run: |
           set -euo pipefail
-          pacman -S --noconfirm --needed base-devel rust cargo gtk4 libadwaita glib2 pkgconf zstd
+          pacman -S --noconfirm --needed base-devel rust cargo gtk4 libadwaita libsecret glib2 pkgconf zstd
           make dist VERSION="$PKG_VERSION"
           cp build-aux/PKGBUILD build/PKGBUILD
           sed -i "s/^pkgver=.*/pkgver=$PKG_VERSION/" build/PKGBUILD
@@ -236,7 +236,7 @@ jobs:
           PKG_VERSION: ${{ needs.validate.outputs.package_version }}
         run: |
           set -euo pipefail
-          dnf install -y rpm-build make gcc cargo rust gtk4-devel libadwaita-devel glib2-devel
+          dnf install -y rpm-build make gcc cargo rust gtk4-devel libadwaita-devel libsecret-devel glib2-devel
           make dist VERSION="$PKG_VERSION"
           mkdir -p rpmbuild/{BUILD,BUILDROOT,RPMS,SOURCES,SPECS,SRPMS}
           cp "build/roseline-$PKG_VERSION.tar.gz" rpmbuild/SOURCES/
@@ -276,7 +276,7 @@ jobs:
       - name: Build package
         run: |
           set -euo pipefail
-          apt-get install -y build-essential pkg-config libgtk-4-dev libadwaita-1-dev libglib2.0-dev curl
+          apt-get install -y build-essential pkg-config libgtk-4-dev libadwaita-1-dev libsecret-1-dev libglib2.0-dev curl
           curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --profile minimal
           . "$HOME/.cargo/env"
           cargo build --release --locked
@@ -314,7 +314,7 @@ jobs:
       - name: Build package
         run: |
           set -euo pipefail
-          apt-get install -y build-essential pkg-config libgtk-4-dev libadwaita-1-dev \
+          apt-get install -y build-essential pkg-config libgtk-4-dev libadwaita-1-dev libsecret-1-dev \
             libglib2.0-dev curl file imagemagick
           curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --profile minimal
           . "$HOME/.cargo/env"

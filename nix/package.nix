@@ -7,6 +7,7 @@
   wrapGAppsHook4,
   gtk4,
   libadwaita,
+  libsecret,
   glib,
 }:
 
@@ -26,6 +27,7 @@ rustPlatform.buildRustPackage {
   buildInputs = [
     gtk4
     libadwaita
+    libsecret
     glib
   ];
 

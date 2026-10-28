@@ -10,6 +10,7 @@ repository = "https://github.com/buwryme/Roseline"
 [dependencies]
 adw = { package = "libadwaita", version = "0.9", features = ["v1_5"] }
 gtk = { package = "gtk4", version = "0.11", features = ["v4_12"] }
+libsecret = "0.9"
 anyhow = "1"
 async-channel = "2"
 serde = { version = "1", features = ["derive"] }

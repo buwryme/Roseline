@@ -587,7 +587,7 @@ impl Splash {
     }
 
     fn finish(self: &Rc<Self>) {
-        let (pid, joined, early) = {
+        let (pid, joined, early, hold) = {
             let mut inner = self.inner.borrow_mut();
             if let Some(timer) = inner.timer.take() {
                 timer.remove();
@@ -608,16 +608,19 @@ impl Splash {
             inner.rpc = None;
             inner.child = None;
             inner.pid = None;
-            inner.hold = None;
+            let hold = inner.hold.take();
             inner.phase = Phase::Idle;
             inner.target = 0;
-            (pid, joined, early)
+            (pid, joined, early, hold)
         };
         if pid.is_some() {
             let _ = std::fs::remove_file(crate::config::Paths::get().game_pid());
         }
         self.window.destroy();
         SPLASH.with(|slot| *slot.borrow_mut() = None);
+        // the keyring write finishes before the application hold is released.
+        crate::cookies::seal();
+        drop(hold);
         if pid.is_some() && !joined && early {
             early_exit_dialog();
         }
