@@ -175,8 +175,28 @@ fn set_runner(settings: &mut Settings, runner_id: &str) -> bool {
     if settings.runner.as_deref() == Some(runner_id) {
         return false;
     }
+    // a custom installation holds the pin; the checked official is a choice
+    // to make in the runner page, never an automatic switch.
+    let alive = settings.runner.as_deref().is_some_and(pinned_runner_alive);
+    if pinned_custom_holds(settings, alive) {
+        return false;
+    }
     settings.runner = Some(runner_id.to_string());
     true
+}
+
+/// whether a custom pin should keep holding rather than give way.
+fn pinned_custom_holds(settings: &Settings, alive: bool) -> bool {
+    settings
+        .runner
+        .as_deref()
+        .is_some_and(crate::runner::is_custom)
+        && alive
+}
+
+/// the pinned runner directory still has its binary.
+fn pinned_runner_alive(id: &str) -> bool {
+    Paths::get().runner_by_id(id).is_some()
 }
 
 fn prepare_bottle(progress: &Progress, settings: &Settings) -> Result<()> {
@@ -523,6 +543,25 @@ mod tests {
         assert!(!set_runner(&mut settings, "rosemary-v0.4.2-official"));
         assert!(set_runner(&mut settings, "rosemary-v0.5.0-official"));
         assert_eq!(settings.runner.as_deref(), Some("rosemary-v0.5.0-official"));
+    }
+
+    #[test]
+    fn a_custom_pin_survives_the_official_check() {
+        let mut settings = Settings::default();
+        settings.runner = Some("custom-mine".to_string());
+
+        assert!(pinned_custom_holds(&settings, true));
+        assert!(!pinned_custom_holds(&settings, false));
+        assert!(!pinned_custom_holds(
+            &Settings {
+                runner: Some("rosemary-v0.4.2-official".to_string()),
+                ..Settings::default()
+            },
+            true
+        ));
+
+        settings.runner = Some("custom-gone".to_string());
+        assert!(!pinned_custom_holds(&settings, false));
     }
 
     #[test]

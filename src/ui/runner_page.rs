@@ -19,6 +19,155 @@ struct Entry {
     tag: String,
     /// installed runner id, when this version is on disk.
     id: Option<String>,
+    custom: bool,
+}
+
+fn local_entries() -> Vec<Entry> {
+    let customs = crate::runner::customs()
+        .into_iter()
+        .map(|(id, name)| Entry {
+            tag: name,
+            id: Some(id),
+            custom: true,
+        });
+    crate::runner::installed()
+        .into_iter()
+        .map(|(id, tag)| Entry {
+            tag,
+            id: Some(id),
+            custom: false,
+        })
+        .chain(customs)
+        .collect()
+}
+
+/// pick a folder through the portal, then name it; confirming copies the
+/// build in and pins it.
+fn choose_folder_then_name(
+    window: &adw::ApplicationWindow,
+    settings: &Rc<RefCell<Settings>>,
+    entries: &Rc<RefCell<Vec<Entry>>>,
+    rebuild: &Rc<dyn Fn()>,
+) {
+    let dialog = gtk::FileDialog::builder()
+        .title("Choose a Rosemary build")
+        .modal(true)
+        .build();
+    let window_for_result = window.clone();
+    let settings = settings.clone();
+    let entries = entries.clone();
+    let rebuild = rebuild.clone();
+    dialog.select_folder(
+        Some(window),
+        None::<&gtk::gio::Cancellable>,
+        move |result| {
+            let Ok(file) = result else {
+                return;
+            };
+            let Some(source) = file.path() else {
+                toast(&window_for_result, "That folder is not a local directory.");
+                return;
+            };
+            let Ok(real) = source.canonicalize() else {
+                toast(&window_for_result, "That folder does not exist.");
+                return;
+            };
+            ask_name_and_import(&window_for_result, real, &settings, &entries, &rebuild);
+        },
+    );
+}
+
+fn ask_name_and_import(
+    window: &adw::ApplicationWindow,
+    source: std::path::PathBuf,
+    settings: &Rc<RefCell<Settings>>,
+    entries: &Rc<RefCell<Vec<Entry>>>,
+    rebuild: &Rc<dyn Fn()>,
+) {
+    let entry = gtk::Entry::builder()
+        .placeholder_text("My Rosemary build")
+        .activates_default(true)
+        .build();
+    let dialog = adw::AlertDialog::builder()
+        .heading("Name this Rosemary build")
+        .extra_child(&entry)
+        .build();
+    dialog.add_response("cancel", "Cancel");
+    dialog.add_response("confirm", "Confirm");
+    dialog.set_response_appearance("confirm", adw::ResponseAppearance::Suggested);
+    dialog.set_default_response(Some("confirm"));
+    dialog.set_close_response("cancel");
+    let validate = {
+        let dialog = dialog.clone();
+        let entry = entry.clone();
+        move || {
+            let name = entry.text().chars().collect::<String>();
+            let found = crate::runner::name_taken(&name);
+            let clean = !found && !name.is_empty() && !name.contains('/');
+            dialog.set_response_enabled("confirm", clean);
+        }
+    };
+    entry.connect_changed(glib::clone!(
+        #[strong]
+        validate,
+        move |_| validate()
+    ));
+
+    let weak_window = window.downgrade();
+    let settings = settings.clone();
+    let entries = entries.clone();
+    let rebuild = rebuild.clone();
+    dialog.connect_response(None, move |_, response| {
+        if response != "confirm" {
+            return;
+        }
+        let name = entry.text().trim().to_string();
+        if name.is_empty() || crate::runner::name_taken(&name) {
+            return;
+        }
+        if let Some(window) = weak_window.upgrade() {
+            toast(&window, &format!("Importing {name}…"));
+        }
+        let source = source.clone();
+        let (sender, receiver) = async_channel::bounded(1);
+        std::thread::spawn(move || {
+            let result = crate::runner::import_custom(&source, &name);
+            let _ = sender.send_blocking((name, result));
+        });
+        glib::spawn_future_local(glib::clone!(
+            #[strong]
+            settings,
+            #[strong]
+            entries,
+            #[strong]
+            rebuild,
+            #[strong]
+            weak_window,
+            async move {
+                let Ok((name, result)) = receiver.recv().await else {
+                    return;
+                };
+                let Some(window) = weak_window.upgrade() else {
+                    return;
+                };
+                match result {
+                    Ok(id) => {
+                        settings.borrow_mut().runner = Some(id);
+                        let _ = settings.borrow().save();
+                        entries.borrow_mut().push(Entry {
+                            tag: name,
+                            id: settings.borrow().runner.clone(),
+                            custom: true,
+                        });
+                        rebuild();
+                        toast(&window, "Import finished");
+                    }
+                    Err(error) => toast(&window, &format!("Couldn't import {name}: {error:#}")),
+                }
+            }
+        ));
+    });
+    dialog.present(Some(window));
 }
 
 pub fn build() -> gtk::Widget {
@@ -33,12 +182,7 @@ pub fn build() -> gtk::Widget {
         )
         .build();
 
-    let entries: Rc<RefCell<Vec<Entry>>> = Rc::new(RefCell::new(
-        crate::runner::installed()
-            .into_iter()
-            .map(|(id, tag)| Entry { tag, id: Some(id) })
-            .collect(),
-    ));
+    let entries: Rc<RefCell<Vec<Entry>>> = Rc::new(RefCell::new(local_entries()));
     let loading = Rc::new(Cell::new(false));
     let combo = adw::ComboRow::builder().title("Version").build();
     combo.add_prefix(&row_prefix("system-run-symbolic"));
@@ -55,9 +199,10 @@ pub fn build() -> gtk::Widget {
             let mut selected = 0u32;
             let mut newest_installed = None;
             for (index, entry) in entries.borrow().iter().enumerate() {
-                model.append(&match &entry.id {
-                    Some(_) => format!("{} (installed)", entry.tag),
-                    None => entry.tag.clone(),
+                model.append(&match (&entry.id, entry.custom) {
+                    (Some(_), true) => format!("{} (custom)", entry.tag),
+                    (Some(_), false) => format!("{} (installed)", entry.tag),
+                    (None, _) => entry.tag.clone(),
                 });
                 if entry.id.is_some() && newest_installed.is_none() {
                     newest_installed = Some(index as u32);
@@ -162,6 +307,30 @@ pub fn build() -> gtk::Widget {
         }
     ));
     group.add(&combo);
+
+    let import_row = adw::ActionRow::builder()
+        .title("Import a custom build")
+        .subtitle("Use a downloaded or self-built Rosemary; it is pinned and official updates leave it alone.")
+        .build();
+    import_row.add_prefix(&row_prefix("archive-insert-symbolic"));
+    let import_button = super::flat_button("Import");
+    import_button.connect_clicked(glib::clone!(
+        #[strong]
+        settings,
+        #[strong]
+        entries,
+        #[strong]
+        rebuild,
+        move |button| {
+            let Some(window) = button.root().and_downcast::<adw::ApplicationWindow>() else {
+                return;
+            };
+            choose_folder_then_name(&window, &settings, &entries, &rebuild);
+        }
+    ));
+    import_row.add_suffix(&import_button);
+    import_row.set_activatable_widget(Some(&import_button));
+    group.add(&import_row);
     page.add(&group);
 
     if cfg!(target_arch = "aarch64") {
@@ -225,11 +394,17 @@ pub fn build() -> gtk::Widget {
                 let mut entries = entries.borrow_mut();
                 for tag in tags {
                     if !entries.iter().any(|entry| entry.tag == tag) {
-                        entries.push(Entry { tag, id: None });
+                        entries.push(Entry {
+                            tag,
+                            id: None,
+                            custom: false,
+                        });
                     }
                 }
                 entries.sort_by(|a, b| {
-                    crate::runner::version_key(&b.tag).cmp(&crate::runner::version_key(&a.tag))
+                    a.custom.cmp(&b.custom).then_with(|| {
+                        crate::runner::version_key(&b.tag).cmp(&crate::runner::version_key(&a.tag))
+                    })
                 });
             }
             rebuild();

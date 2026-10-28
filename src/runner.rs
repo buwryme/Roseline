@@ -5,6 +5,7 @@
 //! unpacking follows Butter's `runner.rs` (GPL-3.0-or-later, the Microlift
 //! contributors).
 
+use std::fs;
 use std::io::Read;
 use std::os::unix::fs::PermissionsExt;
 use std::path::Path;
@@ -74,6 +75,11 @@ pub(crate) fn tag_of(id: &str) -> Option<String> {
         .map(str::to_string)
 }
 
+/// whether an id names a user import rather than an official release.
+pub fn is_custom(id: &str) -> bool {
+    id.starts_with("custom-")
+}
+
 /// installed runners, newest first.
 pub fn installed() -> Vec<(String, String)> {
     let Ok(entries) = std::fs::read_dir(Paths::get().runners()) else {
@@ -101,6 +107,152 @@ pub fn version_key(tag: &str) -> Vec<u64> {
         .split('.')
         .map(|part| part.parse().unwrap_or(0))
         .collect()
+}
+
+/// user-imported runners, by name.
+pub fn customs() -> Vec<(String, String)> {
+    customs_at(&Paths::get())
+}
+
+fn customs_at(paths: &Paths) -> Vec<(String, String)> {
+    let Ok(entries) = std::fs::read_dir(paths.runners()) else {
+        return Vec::new();
+    };
+    let mut found: Vec<(String, String)> = entries
+        .flatten()
+        .filter_map(|entry| {
+            let id = entry.file_name().to_string_lossy().into_owned();
+            if !is_custom(&id) {
+                return None;
+            }
+            let name = id.trim_start_matches("custom-").to_string();
+            paths
+                .runners()
+                .join(&id)
+                .join("bin/rosemary")
+                .is_file()
+                .then_some((id, name))
+        })
+        .collect();
+    found.sort_by(|a, b| a.1.cmp(&b.1));
+    found
+}
+
+/// a name is free when no runner directory, official tag or import uses it.
+pub fn name_taken(name: &str) -> bool {
+    let trimmed = name.trim();
+    trimmed.is_empty()
+        || trimmed == "."
+        || trimmed == ".."
+        || trimmed.contains('/')
+        || trimmed.contains('\\')
+        || name_taken_at(&Paths::get(), trimmed)
+}
+
+fn name_taken_at(paths: &Paths, name: &str) -> bool {
+    let trimmed = name.trim();
+    paths.runners().join(format!("custom-{trimmed}")).exists()
+        || paths.runners().join(trimmed).exists()
+        || customs_at(paths).iter().any(|(_, other)| other == trimmed)
+        || installed().iter().any(|(_, tag)| tag == trimmed)
+}
+
+/// bring a user's build in as a custom runner, pinned by the caller.
+pub fn import_custom(source: &Path, name: &str) -> Result<String> {
+    import_custom_at(&Paths::get(), source, name)
+}
+
+fn import_custom_at(paths: &Paths, source: &Path, name: &str) -> Result<String> {
+    let trimmed = name.trim();
+    if trimmed.is_empty() {
+        bail!("the name cannot be empty");
+    }
+    if trimmed == "." || trimmed == ".." || trimmed.contains('/') || trimmed.contains('\\') {
+        bail!("the name must be a plain folder name");
+    }
+    if name_taken_at(paths, trimmed) {
+        bail!("a runner named {trimmed} already exists");
+    }
+    if source.join("Rosemary/bin/rosemary").is_file() {
+        let dir = paths.runners().join(custom_id_for(trimmed));
+        finish_import(source, &dir, &dir, trimmed)
+    } else if source.join("bin/rosemary").is_file() && source.join("glibc/lib").is_dir() {
+        let dir = paths.runners().join(custom_id_for(trimmed));
+        let embedded = dir.join("Rosemary");
+        finish_import(source, &dir, &embedded, trimmed)
+    } else {
+        bail!("that folder has no Rosemary build inside")
+    }
+}
+
+/// copy into `embedded`, write the launcher into `dir`, tag it; a failure
+/// backs the copy out, so the name is free for the next attempt.
+fn finish_import(source: &Path, dir: &Path, embedded: &Path, name: &str) -> Result<String> {
+    let id = custom_id_for(name);
+    if let Err(error) = copy_recursive(source, embedded)
+        .and_then(|()| write_launcher(dir))
+        .and_then(|()| write_custom_info(dir, name))
+    {
+        let _ = fs::remove_dir_all(dir);
+        return Err(error);
+    }
+    Ok(id)
+}
+
+fn custom_id_for(name: &str) -> String {
+    format!("custom-{name}")
+}
+
+fn write_custom_info(dir: &Path, name: &str) -> Result<()> {
+    let info = Info {
+        name: name.to_string(),
+        kind: "custom",
+        tag: String::new(),
+        executable: "bin/rosemary",
+        installed: now(),
+    };
+    crate::util::write_atomic(
+        &dir.join("runner.toml"),
+        toml::to_string_pretty(&info)?.as_bytes(),
+    )?;
+    Ok(())
+}
+
+fn copy_recursive(source: &Path, dest: &Path) -> Result<()> {
+    fs::create_dir_all(dest)?;
+    for entry in fs::read_dir(source)?.flatten() {
+        let from = entry.path();
+        let to = dest.join(entry.file_name());
+        match entry.file_type()? {
+            kind if kind.is_dir() => copy_recursive(&from, &to)?,
+            kind if kind.is_symlink() => copy_link(&from, &to)?,
+            _ => {
+                fs::copy(&from, &to).with_context(|| format!("copying {}", from.display()))?;
+            }
+        }
+    }
+    Ok(())
+}
+
+/// a static copy keeps the name and puts the pointed-at data behind it;
+/// runner builds ship .so links, so refusing them would break the build.
+fn copy_link(from: &Path, to: &Path) -> Result<()> {
+    let target = fs::read_link(from).with_context(|| format!("reading {}", from.display()))?;
+    let resolved = match target.is_absolute() {
+        true => target,
+        false => from
+            .parent()
+            .with_context(|| format!("{} has no parent", from.display()))?
+            .join(target),
+    };
+    let metadata = fs::metadata(&resolved)
+        .with_context(|| format!("the link {} points at nothing", from.display()))?;
+    if metadata.is_dir() {
+        copy_recursive(&resolved, to)
+    } else {
+        fs::copy(&resolved, to).with_context(|| format!("copying {}", resolved.display()))?;
+        Ok(())
+    }
 }
 
 /// install the latest stable build unless it is already here.
@@ -327,5 +479,146 @@ mod tests {
         let mut tags = ["v0.9.0", "v0.10.0", "v0.3.0"];
         tags.sort_by_key(|tag| version_key(tag));
         assert_eq!(tags, ["v0.3.0", "v0.9.0", "v0.10.0"]);
+    }
+
+    fn temp_paths(tag: &str) -> (std::path::PathBuf, Paths) {
+        let root =
+            std::env::temp_dir().join(format!("roseline-runner-{tag}-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        std::fs::create_dir_all(&root).unwrap();
+        (
+            root.clone(),
+            Paths {
+                data: root.clone(),
+                config: root.clone(),
+                cache: root,
+            },
+        )
+    }
+
+    fn a_build(source: &std::path::Path) {
+        std::fs::create_dir_all(source.join("Rosemary/bin")).unwrap();
+        std::fs::create_dir_all(source.join("Rosemary/glibc/lib")).unwrap();
+        std::fs::write(source.join("Rosemary/bin/rosemary"), b"#!/bin/sh\n").unwrap();
+        std::fs::write(source.join("Rosemary/glibc/lib/ld.so"), b"binary").unwrap();
+    }
+
+    #[test]
+    fn an_import_lands_in_its_own_directory_with_a_launcher() {
+        let (_root, paths) = temp_paths("import");
+        let source = _root.join("download");
+        a_build(&source);
+
+        let id = import_custom_at(&paths, &source, "Mine").unwrap();
+
+        assert_eq!(id, "custom-Mine");
+        let dir = paths.runners().join(&id);
+        assert!(dir.join("Rosemary/bin/rosemary").is_file());
+        assert!(dir.join("Rosemary/glibc/lib/ld.so").is_file());
+        let script = std::fs::read_to_string(dir.join("bin/rosemary")).unwrap();
+        assert!(script.starts_with("#!"));
+        assert!(!script.contains("@LOADER@"));
+        let info = std::fs::read_to_string(dir.join("runner.toml")).unwrap();
+        assert!(info.contains("kind = \"custom\""));
+        assert!(info.contains("name = \"Mine\""));
+        assert_eq!(customs_at(&paths), vec![(id.clone(), "Mine".to_string())]);
+        let _ = std::fs::remove_dir_all(_root);
+    }
+
+    #[test]
+    fn a_bare_build_gets_the_official_layout() {
+        let (_root, paths) = temp_paths("bare");
+        let source = _root.join("checkout");
+        std::fs::create_dir_all(source.join("bin")).unwrap();
+        std::fs::create_dir_all(source.join("glibc/lib")).unwrap();
+        std::fs::write(source.join("bin/rosemary"), b"#!/bin/sh\n").unwrap();
+        std::fs::write(source.join("glibc/lib/ld.so"), b"binary").unwrap();
+
+        let id = import_custom_at(&paths, &source, "Bare").unwrap();
+
+        let dir = paths.runners().join(&id);
+        assert!(dir.join("Rosemary/glibc/lib/ld.so").is_file());
+        assert!(dir.join("Rosemary/bin/rosemary").is_file());
+        assert!(dir.join("bin/rosemary").is_file());
+        let _ = std::fs::remove_dir_all(_root);
+    }
+
+    #[test]
+    fn a_taken_name_is_refused() {
+        let (_root, paths) = temp_paths("taken");
+        let source = _root.join("download");
+        a_build(&source);
+
+        import_custom_at(&paths, &source, "Mine").unwrap();
+        let error = import_custom_at(&paths, &source, "Mine").unwrap_err();
+        assert!(error.to_string().contains("already exists"));
+
+        let official = _root.join("rosemary-v0.3.0-official");
+        std::fs::create_dir_all(official.join("bin")).unwrap();
+        std::fs::write(official.join("bin/rosemary"), b"#!/bin/sh\n").unwrap();
+
+        let error = import_custom_at(&paths, &source, "v0.3.0").unwrap_err();
+        assert!(error.to_string().contains("already exists"));
+        let error = import_custom_at(&paths, &source, "").unwrap_err();
+        assert!(error.to_string().contains("cannot be empty"));
+        let error = import_custom_at(&paths, &source, "sub/dir").unwrap_err();
+        assert!(error.to_string().contains("plain folder name"));
+        let _ = std::fs::remove_dir_all(_root);
+    }
+
+    #[test]
+    fn shared_library_links_come_over_as_plain_files() {
+        let (_root, paths) = temp_paths("links");
+        let source = _root.join("download");
+        a_build(&source);
+        let lib = source.join("Rosemary/lib");
+        std::fs::create_dir_all(&lib).unwrap();
+        std::fs::write(lib.join("libFLAC.so.8"), b"audio").unwrap();
+        std::os::unix::fs::symlink("libFLAC.so.8", lib.join("libFLAC.so.14")).unwrap();
+        let outside = source.join("Rosemary/somewhere");
+        std::fs::create_dir_all(&outside).unwrap();
+        std::fs::write(outside.join("data"), b"tree").unwrap();
+        std::os::unix::fs::symlink("../somewhere", lib.join("tree")).unwrap();
+
+        let id = import_custom_at(&paths, &source, "Linked").unwrap();
+
+        let dir = paths.runners().join(&id);
+        assert_eq!(
+            std::fs::read(dir.join("Rosemary/lib/libFLAC.so.14")).unwrap(),
+            b"audio"
+        );
+        let copied = std::fs::read_to_string(dir.join("Rosemary/lib/tree/data")).unwrap();
+        assert_eq!(copied, "tree");
+        let _ = std::fs::remove_dir_all(_root);
+    }
+
+    #[test]
+    fn a_failed_copy_leaves_the_name_free() {
+        let (_root, paths) = temp_paths("partial");
+        let source = _root.join("download");
+        a_build(&source);
+        std::os::unix::fs::symlink("../vanishing", source.join("Rosemary/gone")).unwrap();
+
+        let error = import_custom_at(&paths, &source, "Meow").unwrap_err();
+        assert!(error.to_string().contains("points at nothing"));
+
+        assert!(!paths.runners().join("custom-Meow").exists());
+        assert!(!name_taken_at(&paths, "Meow"));
+
+        std::fs::remove_file(source.join("Rosemary/gone")).unwrap();
+        let id = import_custom_at(&paths, &source, "Meow").unwrap();
+        assert_eq!(id, "custom-Meow");
+        let _ = std::fs::remove_dir_all(_root);
+    }
+
+    #[test]
+    fn a_without_build_folder_is_refused() {
+        let (_root, paths) = temp_paths("empty");
+        let source = _root.join("nothing-here");
+        std::fs::create_dir_all(&source).unwrap();
+
+        let error = import_custom_at(&paths, &source, "Empty").unwrap_err();
+        assert!(error.to_string().contains("no Rosemary build"));
+        let _ = std::fs::remove_dir_all(_root);
     }
 }
