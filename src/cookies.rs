@@ -121,6 +121,12 @@ fn label(profile: &str) -> String {
     format!("Roséline Roblox cookies ({profile})")
 }
 
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Source {
+    Branded,
+    Legacy,
+}
+
 /// the guest user's jar, split across the two bundle identifiers.
 struct Files {
     dir: PathBuf,
@@ -149,12 +155,15 @@ impl Files {
         [&self.branded, &self.legacy]
     }
 
-    /// the live jar: the branded copy when it has anything in it, then the
-    /// pre-branding one for installations that predate it.
-    fn read(&self) -> Result<Option<String>> {
-        for path in self.paths() {
+    /// the live jar and which name it came from. the branded copy is the
+    /// client's own; the legacy one is only a migration source.
+    fn read(&self) -> Result<Option<(Source, String)>> {
+        for (source, path) in [
+            (Source::Branded, &self.branded),
+            (Source::Legacy, &self.legacy),
+        ] {
             match std::fs::read_to_string(path) {
-                Ok(text) if !text.trim().is_empty() => return Ok(Some(text)),
+                Ok(text) if !text.trim().is_empty() => return Ok(Some((source, text))),
                 Ok(_) => {}
                 Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
                 Err(error) => {
@@ -202,19 +211,42 @@ fn prepare_with(store: &dyn Store, paths: &Paths) -> Result<()> {
     files.ensure_private_dir()?;
     let key = key(paths);
     match files.read()? {
-        Some(text) if has_session(&text) => {
-            // a file on disk is the live jar, including the first launch
-            // after an upgrade; it wins over an older keyring copy. Rewrite
-            // it so a jar left world-readable is closed down before the
-            // client starts.
+        Some((Source::Branded, text)) if has_session(&text) => {
+            // the client's own file is the live jar, including the first
+            // launch after an upgrade; it wins over an older keyring copy.
+            // rewrite it so a jar left world-readable is closed down before
+            // the client starts.
             store.set(&key, &text)?;
             files.write(&text)?;
         }
-        Some(_) => {
-            // logged out: do not restore a stale session later.
+        Some((Source::Branded, _)) => {
+            // signed out: do not restore a stale session later.
             store.clear(&key)?;
             files.remove()?;
         }
+        Some((Source::Legacy, text)) => match store.get(&key) {
+            Ok(Some(stored)) if has_session(&stored) => {
+                // the keyring has already owned this bottle; a leftover
+                // legacy file must not sign anyone back in.
+                files.write(&stored)?;
+            }
+            Ok(Some(_)) => {
+                store.clear(&key)?;
+                files.remove()?;
+            }
+            Ok(None) if has_session(&text) => {
+                // first run after upgrading from the pre-keyring build.
+                store.set(&key, &text)?;
+                files.write(&text)?;
+            }
+            Ok(None) => files.remove()?,
+            Err(error) => {
+                // the client reads the branded name; leave it a working
+                // session while the keyring error is reported.
+                files.write(&text)?;
+                return Err(error);
+            }
+        },
         None => match store.get(&key)? {
             Some(text) if has_session(&text) => files.write(&text)?,
             Some(_) => store.clear(&key)?,
@@ -251,7 +283,7 @@ fn seal_with(store: &dyn Store, paths: &Paths) -> Result<()> {
     files.ensure_private_dir()?;
     let key = key(paths);
     match files.read()? {
-        Some(text) if has_session(&text) => {
+        Some((_, text)) if has_session(&text) => {
             store.set(&key, &text)?;
             files.remove()?;
         }
@@ -419,6 +451,55 @@ mod tests {
         assert_eq!(mode(&files.branded), 0o600);
         assert_eq!(mode(&files.legacy), 0o600);
         assert_eq!(mode(&files.dir), 0o700);
+        let _ = std::fs::remove_dir_all(&paths.data);
+    }
+
+    #[test]
+    fn a_legacy_jar_is_migrated_when_the_keyring_is_empty() {
+        let paths = temp_paths("legacy");
+        let files = files(&paths);
+        std::fs::write(&files.legacy, JAR).unwrap();
+        let store = Memory::default();
+
+        prepare_with(&store, &paths).unwrap();
+
+        assert_eq!(store.value.borrow().as_deref(), Some(JAR));
+        assert_eq!(std::fs::read_to_string(&files.branded).unwrap(), JAR);
+        assert_eq!(std::fs::read_to_string(&files.legacy).unwrap(), JAR);
+        let _ = std::fs::remove_dir_all(&paths.data);
+    }
+
+    #[test]
+    fn a_stale_legacy_jar_cannot_undo_a_stored_session() {
+        let paths = temp_paths("stale");
+        let files = files(&paths);
+        let stale = "ROBLOSECURITY_OLD\told-value\troblox.com\t/\t1\t1\n\
+                     .ROBLOSECURITY\told-value\troblox.com\t/\t1\t1\n";
+        std::fs::write(&files.legacy, stale).unwrap();
+        let store = Memory::default();
+        *store.value.borrow_mut() = Some(JAR.to_string());
+
+        prepare_with(&store, &paths).unwrap();
+
+        assert_eq!(store.value.borrow().as_deref(), Some(JAR));
+        assert_eq!(std::fs::read_to_string(&files.branded).unwrap(), JAR);
+        assert_eq!(std::fs::read_to_string(&files.legacy).unwrap(), JAR);
+        let _ = std::fs::remove_dir_all(&paths.data);
+    }
+
+    #[test]
+    fn a_logged_out_branded_jar_clears_the_stored_session() {
+        let paths = temp_paths("signed-out");
+        let files = files(&paths);
+        std::fs::write(&files.branded, "rbx-ip2\t1.2.3.4\troblox.com\t/\t0\t2\n").unwrap();
+        let store = Memory::default();
+        *store.value.borrow_mut() = Some(JAR.to_string());
+
+        prepare_with(&store, &paths).unwrap();
+
+        assert!(store.value.borrow().is_none());
+        assert!(!files.branded.exists());
+        assert!(!files.legacy.exists());
         let _ = std::fs::remove_dir_all(&paths.data);
     }
 

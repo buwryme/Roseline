@@ -182,8 +182,8 @@ fn set_runner(settings: &mut Settings, runner_id: &str) -> bool {
 fn prepare_bottle(progress: &Progress, settings: &Settings) -> Result<()> {
     ensure_prefix(progress, settings)?;
     crate::roblox::ensure(progress)?;
-    crate::roblox::brand()?;
     crate::cookies::prepare();
+    crate::roblox::brand()?;
     crate::overlay::apply(progress)?;
     crate::fonts::apply(settings)?;
     crate::flags::write(settings)?;
