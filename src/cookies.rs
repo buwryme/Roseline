@@ -26,42 +26,67 @@ const SESSION_COOKIE: &str = ".ROBLOSECURITY";
 /// the keyring operations the migration needs, kept behind a trait so the
 /// flow is testable without a running secret service.
 trait Store {
-    fn get(&self, profile: &str) -> Result<Option<String>>;
-    fn set(&self, profile: &str, value: &str) -> Result<()>;
-    fn clear(&self, profile: &str) -> Result<()>;
+    fn get(&self, key: &Key) -> Result<Option<String>>;
+    fn set(&self, key: &Key, value: &str) -> Result<()>;
+    fn clear(&self, key: &Key) -> Result<()>;
+}
+
+/// what makes an item this bottle's own: two installs (a native package and
+/// a Flatpak, say) must not overwrite each other's session.
+struct Key {
+    profile: String,
+    bottle: String,
 }
 
 struct Keyring;
 
 impl Store for Keyring {
-    fn get(&self, profile: &str) -> Result<Option<String>> {
+    fn get(&self, key: &Key) -> Result<Option<String>> {
         let schema = schema();
         let value = libsecret::password_lookup_sync(
             Some(&schema),
-            attributes(profile),
+            attributes(key),
             gtk::gio::Cancellable::NONE,
         )?;
-        Ok(value.map(|value| value.to_string()))
+        if value.is_some() {
+            return Ok(value.map(|value| value.to_string()));
+        }
+        // the first build keyed items by user alone; move that item over
+        // rather than making anyone sign in again.
+        let legacy = libsecret::password_lookup_sync(
+            Some(&schema),
+            legacy_attributes(key),
+            gtk::gio::Cancellable::NONE,
+        )?;
+        if let Some(text) = &legacy {
+            self.set(key, text)?;
+            libsecret::password_clear_sync(
+                Some(&schema),
+                legacy_attributes(key),
+                gtk::gio::Cancellable::NONE,
+            )?;
+        }
+        Ok(legacy.map(|value| value.to_string()))
     }
 
-    fn set(&self, profile: &str, value: &str) -> Result<()> {
+    fn set(&self, key: &Key, value: &str) -> Result<()> {
         let schema = schema();
         libsecret::password_store_sync(
             Some(&schema),
-            attributes(profile),
+            attributes(key),
             Some(libsecret::COLLECTION_DEFAULT.as_str()),
-            &label(profile),
+            &label(&key.profile),
             value,
             gtk::gio::Cancellable::NONE,
         )?;
         Ok(())
     }
 
-    fn clear(&self, profile: &str) -> Result<()> {
+    fn clear(&self, key: &Key) -> Result<()> {
         let schema = schema();
         libsecret::password_clear_sync(
             Some(&schema),
-            attributes(profile),
+            attributes(key),
             gtk::gio::Cancellable::NONE,
         )?;
         Ok(())
@@ -75,12 +100,21 @@ fn schema() -> libsecret::Schema {
         HashMap::from([
             ("app", libsecret::SchemaAttributeType::String),
             ("profile", libsecret::SchemaAttributeType::String),
+            ("bottle", libsecret::SchemaAttributeType::String),
         ]),
     )
 }
 
-fn attributes(profile: &str) -> HashMap<&str, &str> {
-    HashMap::from([("app", "roseline"), ("profile", profile)])
+fn attributes(key: &Key) -> HashMap<&str, &str> {
+    HashMap::from([
+        ("app", "roseline"),
+        ("profile", key.profile.as_str()),
+        ("bottle", key.bottle.as_str()),
+    ])
+}
+
+fn legacy_attributes(key: &Key) -> HashMap<&str, &str> {
+    HashMap::from([("app", "roseline"), ("profile", key.profile.as_str())])
 }
 
 fn label(profile: &str) -> String {
@@ -155,21 +189,21 @@ fn prepare_with(store: &dyn Store, paths: &Paths) -> Result<()> {
     let Some(files) = Files::for_paths(paths) else {
         return Ok(());
     };
-    let profile = profile(paths);
+    let key = key(paths);
     match files.read()? {
         Some(text) if has_session(&text) => {
             // a file on disk is the live jar, including the first launch
             // after an upgrade; it wins over an older keyring copy.
-            store.set(&profile, &text)?;
+            store.set(&key, &text)?;
         }
         Some(_) => {
             // logged out: do not restore a stale session later.
-            store.clear(&profile)?;
+            store.clear(&key)?;
             files.remove()?;
         }
-        None => match store.get(&profile)? {
+        None => match store.get(&key)? {
             Some(text) if has_session(&text) => files.write(&text)?,
-            Some(_) => store.clear(&profile)?,
+            Some(_) => store.clear(&key)?,
             None => {}
         },
     }
@@ -200,32 +234,36 @@ fn seal_with(store: &dyn Store, paths: &Paths) -> Result<()> {
     let Some(files) = Files::for_paths(paths) else {
         return Ok(());
     };
-    let profile = profile(paths);
+    let key = key(paths);
     match files.read()? {
         Some(text) if has_session(&text) => {
-            store.set(&profile, &text)?;
+            store.set(&key, &text)?;
             files.remove()?;
         }
         Some(_) => {
-            store.clear(&profile)?;
+            store.clear(&key)?;
             files.remove()?;
         }
         None => {
             // the client may have removed the jar when signing out.
-            store.clear(&profile)?;
+            store.clear(&key)?;
         }
     }
     Ok(())
 }
 
-fn profile(paths: &Paths) -> String {
-    paths
+fn key(paths: &Paths) -> Key {
+    let profile = paths
         .guest_user()
         .and_then(|user| {
             user.file_name()
                 .map(|name| name.to_string_lossy().into_owned())
         })
-        .unwrap_or_else(|| "default".to_string())
+        .unwrap_or_else(|| "default".to_string());
+    Key {
+        profile,
+        bottle: paths.bottle().display().to_string(),
+    }
 }
 
 fn has_session(text: &str) -> bool {
@@ -267,16 +305,16 @@ mod tests {
     }
 
     impl Store for Memory {
-        fn get(&self, _profile: &str) -> Result<Option<String>> {
+        fn get(&self, _key: &Key) -> Result<Option<String>> {
             Ok(self.value.borrow().clone())
         }
 
-        fn set(&self, _profile: &str, value: &str) -> Result<()> {
+        fn set(&self, _key: &Key, value: &str) -> Result<()> {
             *self.value.borrow_mut() = Some(value.to_string());
             Ok(())
         }
 
-        fn clear(&self, _profile: &str) -> Result<()> {
+        fn clear(&self, _key: &Key) -> Result<()> {
             *self.value.borrow_mut() = None;
             Ok(())
         }
@@ -285,15 +323,15 @@ mod tests {
     struct Failing;
 
     impl Store for Failing {
-        fn get(&self, _profile: &str) -> Result<Option<String>> {
+        fn get(&self, _key: &Key) -> Result<Option<String>> {
             Ok(None)
         }
 
-        fn set(&self, _profile: &str, _value: &str) -> Result<()> {
+        fn set(&self, _key: &Key, _value: &str) -> Result<()> {
             anyhow::bail!("the secret service is unavailable")
         }
 
-        fn clear(&self, _profile: &str) -> Result<()> {
+        fn clear(&self, _key: &Key) -> Result<()> {
             Ok(())
         }
     }
@@ -331,10 +369,22 @@ mod tests {
     }
 
     #[test]
-    fn the_keyring_item_is_keyed_by_the_guest_user() {
-        let paths = temp_paths("profile");
-        assert_eq!(profile(&paths), "miles");
+    fn the_keyring_item_is_keyed_by_the_guest_user_and_bottle() {
+        let paths = temp_paths("key");
+        let key = key(&paths);
+        assert_eq!(key.profile, "miles");
+        assert_eq!(key.bottle, paths.bottle().display().to_string());
         let _ = std::fs::remove_dir_all(&paths.data);
+    }
+
+    #[test]
+    fn two_bottles_get_different_keyring_items() {
+        let native = temp_paths("key-native");
+        let flatpak = temp_paths("key-flatpak");
+        assert_ne!(key(&native).bottle, key(&flatpak).bottle);
+        assert_eq!(key(&native).profile, key(&flatpak).profile);
+        let _ = std::fs::remove_dir_all(&native.data);
+        let _ = std::fs::remove_dir_all(&flatpak.data);
     }
 
     #[test]
