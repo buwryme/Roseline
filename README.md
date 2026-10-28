@@ -83,12 +83,12 @@ make install PREFIX=~/.local
 - Automatic client updates, from Roblox's own endpoint
 - Server location notifications
 - Graphics API and device choices
-- Font overrides by regular and monospace fonts, doesn't override language-specific and emoji fonts
+- Font overrides by regular and monospace fonts; doesn't override language-specific and emoji fonts
 - Content overlays (cursors, skyboxes, sounds, textures...)
 - Runner management: choose Rosemary versions, reset the Darwin base, set modification policies for the Darwin base...
 - Environment variables for Rosemary itself and Mac programs
-- Optional Discord RPC, with Join/Show Game and etc...
-- Optional close when leaving game
+- Optional Discord RPC, with Join/Show Game buttons and more
+- Optional close when leaving a game
 
 ## Security
 
@@ -98,9 +98,9 @@ make install PREFIX=~/.local
 ## Note:
 
 - Games using video playback will crash the game
-- Vulkan graphics might be slower than OpenGL due to M2VK translation layers
+- Vulkan graphics might be slower than OpenGL due to the Metal2Vulkan translation layer
 - Running Roblox on Rosemary is experimental and not as widely tested
-- ARM64 Flatpak builds are ommited due to muvm requiring no sandboxes
+- ARM64 Flatpak builds are omitted due to muvm requiring no sandboxes
 
 ## Credits
 
@@ -112,7 +112,7 @@ Bloxstrap, for the old avatar editor background
 
 Licensed GPL-3.0-or-later, with additional terms:
 - Always keep the credit
-- Never mispresent a derivative as the original
+- Never misrepresent a derivative as the original
 - Zero warranty
 
 <p align="center">made with ♡ by <a href="https://github.com/buwryme">buwryme</a>. join the <a href="https://discord.gg/HrUrzXAxPV">discord server!</a></p>
