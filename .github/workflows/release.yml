@@ -236,7 +236,7 @@ jobs:
           sed -i "s/^pkgver=.*/pkgver=$PKG_VERSION/" build/PKGBUILD
           useradd -m builder
           chown -R builder:builder "$PWD"
-          su builder -s /bin/bash -c "cd '$PWD/build' && makepkg --noconfirm --nocheck"
+          su builder -s /bin/bash -c "cd '$PWD/build' && PKGDEST='$PWD/build' makepkg --noconfirm --nocheck"
           ls -l build/*.pkg.tar.zst
       - uses: actions/upload-artifact@v7
         if: ${{ matrix.arch == 'x86_64' || inputs.build_arch_arm64 }}
