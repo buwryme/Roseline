@@ -235,9 +235,11 @@ jobs:
           cp build-aux/PKGBUILD build/PKGBUILD
           sed -i "s/^pkgver=.*/pkgver=$PKG_VERSION/" build/PKGBUILD
           useradd -m builder
+          grep -E '^(CARCH|PKGEXT|COMPRESSION)' /etc/makepkg.conf || true
+          cp /etc/makepkg.conf build/mk.conf
+          printf "PKGEXT='.pkg.tar.zst'\n" >> build/mk.conf
           chown -R builder:builder "$PWD"
-          grep '^#*PKGDEST' /etc/makepkg.conf || true
-          su builder -s /bin/bash -c "cd '$PWD/build' && sed 's|^#*PKGDEST=.*|PKGDEST='$PWD/build'|' /etc/makepkg.conf > mk.conf && makepkg --noconfirm --nocheck -p mk.conf"
+          su builder -s /bin/bash -c "cd '$PWD/build' && MAKEPKG_CONF='$PWD/build/mk.conf' makepkg --noconfirm --nocheck"
           find "$PWD" -maxdepth 3 -name 'roseline-*.pkg.tar.zst' -print -exec mv -t build/ {} \;
           ls -l build/*.pkg.tar.zst
       - uses: actions/upload-artifact@v7
