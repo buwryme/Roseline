@@ -83,12 +83,17 @@ make install PREFIX=~/.local
 - Automatic client updates, from Roblox's own endpoint
 - Server location notifications
 - Graphics API and device choices
-- Font overrides by regular and monospace fonts; doesn't override language-specific and emoji fonts
+- Font overrides sorted by regular and monospace fonts; doesn't override language-specific and emoji fonts
 - Content overlays (cursors, skyboxes, sounds, textures...)
 - Runner management: choose Rosemary versions, reset the Darwin base, set modification policies for the Darwin base...
 - Environment variables for Rosemary itself and Mac programs
 - Optional Discord RPC, with Join/Show Game buttons and more
 - Optional close when leaving a game
+- View the location of the server you just joined
+- Replace the avatar editor background with the classic one
+- Bring your own Rosemary build
+- Close Roblox when leaving game, removing homescreen
+- Edit FastFlags
 
 ## Security
 
