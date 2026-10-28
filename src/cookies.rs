@@ -184,6 +184,11 @@ impl Files {
         ] {
             match std::fs::read_to_string(path) {
                 Ok(text) if !text.trim().is_empty() => return Ok(Some((source, text))),
+                // an empty branded jar is the client saying it is signed
+                // out; never fall through to a stale legacy session.
+                Ok(_) if source == Source::Branded => {
+                    return Ok(Some((Source::Branded, String::new())));
+                }
                 Ok(_) => {}
                 Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
                 Err(error) => {
@@ -697,6 +702,23 @@ mod tests {
 
         assert_eq!(store.value.borrow().as_deref(), Some(JAR));
         assert_eq!(std::fs::read_to_string(&files.branded).unwrap(), JAR);
+        assert!(!files.legacy.exists());
+        let _ = std::fs::remove_dir_all(&paths.data);
+    }
+
+    #[test]
+    fn an_empty_branded_jar_does_not_fall_back_to_legacy() {
+        let paths = temp_paths("empty-branded");
+        let files = files(&paths);
+        std::fs::write(&files.branded, "").unwrap();
+        std::fs::write(&files.legacy, JAR).unwrap();
+        let store = Memory::default();
+        *store.value.borrow_mut() = Some(JAR.to_string());
+
+        prepare_with(&store, &paths).unwrap();
+
+        assert!(store.value.borrow().is_none());
+        assert!(!files.branded.exists());
         assert!(!files.legacy.exists());
         let _ = std::fs::remove_dir_all(&paths.data);
     }
