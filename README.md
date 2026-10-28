@@ -94,6 +94,7 @@ make install PREFIX=~/.local
 - Bring your own Rosemary build
 - Close Roblox when leaving game, removing homescreen
 - Edit FastFlags
+- ARM64 support (thanks to starraep!)
 
 ## Security
 
