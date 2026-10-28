@@ -1,6 +1,6 @@
 [package]
 name = "roseline"
-version = "0.1.1-hotfix1"
+version = "0.1.2"
 edition = "2024"
 rust-version = "1.92"
 description = "Run Roblox with Rosemary on Linux"

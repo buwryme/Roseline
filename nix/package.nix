@@ -13,7 +13,7 @@
 
 rustPlatform.buildRustPackage {
   pname = "roseline";
-  version = "0.1.1-hotfix1";
+  version = "0.1.2";
 
   src = ./..;
   cargoLock.lockFile = ../Cargo.lock;

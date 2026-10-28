@@ -136,12 +136,12 @@ usage() {
     cat <<'EOF'
 usage:
   curl -fsSL https://buwryy.net/api/roseline/setup-script | bash
-  curl -fsSL https://buwryy.net/api/roseline/setup-script | bash -s -- --system --version v0.1.1-hotfix1 --yes
+  curl -fsSL https://buwryy.net/api/roseline/setup-script | bash -s -- --system --version v0.1.2 --yes
   curl -fsSL https://buwryy.net/api/roseline/setup-script | bash -s -- --flatpak --latest --yes
 
 options:
   --system, --flatpak   skip the install-method prompt
-  --version <tag>       pick an exact release (e.g. v0.1.1-hotfix1)
+  --version <tag>       pick an exact release (e.g. v0.1.2)
   --latest              skip the version prompt and take the recommended release
   --yes, -y             skip the confirmation prompt
   --dry-run             print what would be downloaded and installed
