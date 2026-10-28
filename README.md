@@ -87,7 +87,8 @@ make install PREFIX=~/.local
 - Content overlays (cursors, skyboxes, sounds, textures...)
 - Runner management: choose Rosemary versions, reset the Darwin base, set modification policies for the Darwin base...
 - Environment variables for Rosemary itself and Mac programs
-- Optional Discord RPC, with Join/Show Game and etc
+- Optional Discord RPC, with Join/Show Game and etc...
+- Optional close when leaving game
 
 ## Note:
 
