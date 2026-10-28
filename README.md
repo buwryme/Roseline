@@ -13,7 +13,7 @@
     <img src="https://img.shields.io/badge/discord-server-5865f2?style=flat-square&logo=discord&logoColor=white" alt="discord server">
   </a>
   <a href="https://github.com/buwryme/Roseline/actions/workflows/ci.yml">
-    <img src="https://github.com/buwryme/Roseline/actions/workflows/ci.yml/badge.svg?branch=arm64" alt="CI">
+    <img src="https://github.com/buwryme/Roseline/actions/workflows/ci.yml/badge.svg?branch=main" alt="CI">
   </a>
 </p>
 
