@@ -82,7 +82,11 @@ pub fn is_custom(id: &str) -> bool {
 
 /// installed runners, newest first.
 pub fn installed() -> Vec<(String, String)> {
-    let Ok(entries) = std::fs::read_dir(Paths::get().runners()) else {
+    installed_at(&Paths::get())
+}
+
+fn installed_at(paths: &Paths) -> Vec<(String, String)> {
+    let Ok(entries) = std::fs::read_dir(paths.runners()) else {
         return Vec::new();
     };
     let mut found: Vec<(String, String)> = entries
@@ -154,7 +158,7 @@ fn name_taken_at(paths: &Paths, name: &str) -> bool {
     paths.runners().join(format!("custom-{trimmed}")).exists()
         || paths.runners().join(trimmed).exists()
         || customs_at(paths).iter().any(|(_, other)| other == trimmed)
-        || installed().iter().any(|(_, tag)| tag == trimmed)
+        || installed_at(paths).iter().any(|(_, tag)| tag == trimmed)
 }
 
 /// bring a user's build in as a custom runner, pinned by the caller.
@@ -553,7 +557,7 @@ mod tests {
         let error = import_custom_at(&paths, &source, "Mine").unwrap_err();
         assert!(error.to_string().contains("already exists"));
 
-        let official = _root.join("rosemary-v0.3.0-official");
+        let official = paths.runners().join("rosemary-v0.3.0-official");
         std::fs::create_dir_all(official.join("bin")).unwrap();
         std::fs::write(official.join("bin/rosemary"), b"#!/bin/sh\n").unwrap();
 
