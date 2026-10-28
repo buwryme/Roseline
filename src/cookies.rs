@@ -164,6 +164,10 @@ impl Files {
     fn ensure_private_dir(&self) -> Result<()> {
         std::fs::create_dir_all(&self.dir)?;
         std::fs::set_permissions(&self.dir, std::fs::Permissions::from_mode(0o700))?;
+        // an interrupted atomic write can leave the cookie in a temp file.
+        for path in self.paths() {
+            let _ = std::fs::remove_file(temp_path(path));
+        }
         Ok(())
     }
 
@@ -458,13 +462,17 @@ fn best_effort_purge(paths: &Paths, session: Option<&str>) {
     purge_cached_copies(paths, session);
 }
 
+fn temp_path(path: &Path) -> PathBuf {
+    let name = path.file_name().unwrap_or_default().to_string_lossy();
+    path.with_file_name(format!(".{name}.tmp"))
+}
+
 fn write_private(path: &Path, text: &str) -> Result<()> {
     let parent = path
         .parent()
         .with_context(|| format!("{} has no parent directory", path.display()))?;
     std::fs::create_dir_all(parent)?;
-    let name = path.file_name().unwrap_or_default().to_string_lossy();
-    let temp = parent.join(format!(".{name}.tmp"));
+    let temp = temp_path(path);
     let mut file = std::fs::OpenOptions::new()
         .write(true)
         .create(true)
@@ -576,6 +584,7 @@ mod tests {
         let paths = temp_paths("adopt");
         let files = files(&paths);
         std::fs::write(&files.branded, JAR).unwrap();
+        std::fs::write(temp_path(&files.branded), JAR).unwrap();
         std::fs::set_permissions(&files.branded, std::fs::Permissions::from_mode(0o644)).unwrap();
         std::fs::set_permissions(&files.dir, std::fs::Permissions::from_mode(0o755)).unwrap();
         let store = Memory::default();
@@ -587,6 +596,7 @@ mod tests {
         assert!(!files.legacy.exists());
         assert_eq!(mode(&files.branded), 0o600);
         assert_eq!(mode(&files.dir), 0o700);
+        assert!(!temp_path(&files.branded).exists());
         let _ = std::fs::remove_dir_all(&paths.data);
     }
 
@@ -720,6 +730,7 @@ mod tests {
         assert!(!files.legacy.exists());
         assert_eq!(mode(&files.branded), 0o600);
         assert_eq!(mode(&files.dir), 0o700);
+        assert!(!temp_path(&files.branded).exists());
         let _ = std::fs::remove_dir_all(&paths.data);
     }
 
