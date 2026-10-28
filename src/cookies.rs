@@ -363,9 +363,9 @@ fn has_session(text: &str) -> bool {
 
 /// cached responses can carry the cookie header; they are safe to drop and
 /// must not outlive the plaintext jar.
-fn purge_cached_copies(paths: &Paths, session: Option<&str>) -> Result<usize> {
+fn purge_cached_copies(paths: &Paths, session: Option<&str>) -> usize {
     let Some(user) = paths.guest_user() else {
-        return Ok(0);
+        return 0;
     };
     let mut needles: Vec<&[u8]> = vec![b".ROBLOSECURITY="];
     // a real session cookie is long; a short value would match half the cache.
@@ -374,35 +374,48 @@ fn purge_cached_copies(paths: &Paths, session: Option<&str>) -> Result<usize> {
     }
     let mut removed = 0;
     for name in ["Library/Caches", "Library/WebKit", "Library/Logs"] {
-        walk_and_purge(&user.join(name), &needles, &mut removed)?;
+        walk_and_purge(&user.join(name), &needles, &mut removed);
     }
     // Roseline's own launch log tails the client; it must not keep a copy.
-    walk_and_purge(&paths.logs(), &needles, &mut removed)?;
-    Ok(removed)
+    walk_and_purge(&paths.logs(), &needles, &mut removed);
+    removed
 }
 
-fn walk_and_purge(dir: &Path, needles: &[&[u8]], removed: &mut usize) -> Result<()> {
+/// one unreadable cache file must not stop the rest from being cleaned.
+fn walk_and_purge(dir: &Path, needles: &[&[u8]], removed: &mut usize) {
     let entries = match std::fs::read_dir(dir) {
         Ok(entries) => entries,
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(()),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return,
         Err(error) => {
-            return Err(error).with_context(|| format!("reading {}", dir.display()));
+            eprintln!("roseline: could not scan {}: {error}", dir.display());
+            return;
         }
     };
-    for entry in entries {
-        let entry = entry.with_context(|| format!("reading {}", dir.display()))?;
-        let file_type = entry
-            .file_type()
-            .with_context(|| format!("reading {}", entry.path().display()))?;
+    for entry in entries.flatten() {
+        let Ok(file_type) = entry.file_type() else {
+            continue;
+        };
         if file_type.is_dir() {
-            walk_and_purge(&entry.path(), needles, removed)?;
-        } else if file_type.is_file() && file_contains(&entry.path(), needles)? {
-            std::fs::remove_file(entry.path())
-                .with_context(|| format!("removing {}", entry.path().display()))?;
-            *removed += 1;
+            walk_and_purge(&entry.path(), needles, removed);
+        } else if file_type.is_file() {
+            let contains = file_contains(&entry.path(), needles).unwrap_or_else(|error| {
+                eprintln!(
+                    "roseline: could not read {}: {error:#}",
+                    entry.path().display()
+                );
+                false
+            });
+            if contains {
+                match std::fs::remove_file(entry.path()) {
+                    Ok(()) => *removed += 1,
+                    Err(error) => eprintln!(
+                        "roseline: could not remove {}: {error}",
+                        entry.path().display()
+                    ),
+                }
+            }
         }
     }
-    Ok(())
 }
 
 fn file_contains(path: &Path, needles: &[&[u8]]) -> Result<bool> {
@@ -433,9 +446,7 @@ fn file_contains(path: &Path, needles: &[&[u8]]) -> Result<bool> {
 }
 
 fn best_effort_purge(paths: &Paths, session: Option<&str>) {
-    if let Err(error) = purge_cached_copies(paths, session) {
-        eprintln!("roseline: could not remove cached Roblox cookies: {error:#}");
-    }
+    purge_cached_copies(paths, session);
 }
 
 fn write_private(path: &Path, text: &str) -> Result<()> {
@@ -597,6 +608,12 @@ mod tests {
         )
         .unwrap();
         std::fs::write(caches.join("unrelated"), "nothing to see").unwrap();
+        std::fs::write(caches.join("locked"), "nothing here either").unwrap();
+        std::fs::set_permissions(
+            caches.join("locked"),
+            std::fs::Permissions::from_mode(0o000),
+        )
+        .unwrap();
         std::fs::create_dir_all(paths.logs()).unwrap();
         std::fs::write(
             paths.logs().join("launch-1.log"),
@@ -604,8 +621,7 @@ mod tests {
         )
         .unwrap();
 
-        let removed =
-            purge_cached_copies(&paths, Some("secret-value-that-is-long-enough")).unwrap();
+        let removed = purge_cached_copies(&paths, Some("secret-value-that-is-long-enough"));
 
         assert_eq!(removed, 4);
         assert!(!caches.join("response").exists());
@@ -626,7 +642,7 @@ mod tests {
         std::fs::write(caches.join("unrelated"), "1").unwrap();
 
         // a one-byte session value must not be used as a needle.
-        let removed = purge_cached_copies(&paths, Some("1")).unwrap();
+        let removed = purge_cached_copies(&paths, Some("1"));
 
         assert_eq!(removed, 1);
         assert!(!caches.join("response").exists());
