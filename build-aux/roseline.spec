@@ -13,9 +13,11 @@ Source0:        %{name}-%{version}.tar.gz
 BuildRequires:  cargo
 BuildRequires:  gtk4-devel
 BuildRequires:  libadwaita-devel
+BuildRequires:  libsecret-devel
 BuildRequires:  glib2-devel
 Requires:       gtk4%{?_isa}
 Requires:       libadwaita%{?_isa}
+Requires:       libsecret%{?_isa}
 
 %description
 A small GTK4/Libadwaita app written in Rust that runs the macOS Roblox clients via Rosemary.

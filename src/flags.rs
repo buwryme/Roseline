@@ -1,8 +1,9 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-//! fast flags, locked to Roblox's allowlist.
+//! fast flags: the allowlisted switches and a manual layer.
 //!
-//! the client ignores everything else, so there is no free-form editor.
+//! the client ignores manual entries outside its allowlist, but Roseline
+//! still writes them.
 
 use std::collections::BTreeMap;
 use std::path::PathBuf;
@@ -92,9 +93,9 @@ pub const PRESETS: [Preset; 3] = [
     },
 ];
 
-/// the allowlisted selections: presets and override sliders.
+/// the switches plus the manual layer, which is written last.
 pub fn payload(settings: &Settings) -> BTreeMap<String, String> {
-    settings
+    let mut values: BTreeMap<String, String> = settings
         .flags
         .iter()
         .filter(|(key, _)| {
@@ -102,7 +103,14 @@ pub fn payload(settings: &Settings) -> BTreeMap<String, String> {
                 || EXTRA_KEYS.contains(&key.as_str())
         })
         .map(|(key, value)| (key.clone(), value.clone()))
-        .collect()
+        .collect();
+    values.extend(
+        settings
+            .user_flags
+            .iter()
+            .map(|(key, value)| (key.clone(), value.clone())),
+    );
+    values
 }
 
 /// keys the override sliders write directly.
@@ -152,6 +160,33 @@ mod tests {
         assert_eq!(
             payload.get("FIntDebugForceMSAASamples").map(String::as_str),
             Some("4")
+        );
+    }
+
+    #[test]
+    fn manual_flags_override_the_switches_and_are_kept() {
+        let mut settings = Settings::default();
+        settings
+            .flags
+            .insert("FIntDebugForceMSAASamples".into(), "4".into());
+        settings
+            .user_flags
+            .insert("FIntDebugForceMSAASamples".into(), "8".into());
+        settings
+            .user_flags
+            .insert("FFlagNotAllowlisted".into(), "True".into());
+        let payload = managed_payload(&settings);
+        assert_eq!(
+            payload.get("FIntDebugForceMSAASamples").map(String::as_str),
+            Some("8")
+        );
+        assert_eq!(
+            payload.get("FFlagNotAllowlisted").map(String::as_str),
+            Some("True")
+        );
+        assert_eq!(
+            payload.get(DISABLE_MAC_UPDATES).map(String::as_str),
+            Some("True")
         );
     }
 

@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-//! fast flags, locked to Roblox's allowlist.
+//! fast flags: the allowlisted switches and a manual layer.
 //!
 //! slider ranges follow the community's documentation: texture 0-3, CSG LOD
 //! distances 0-1000 studs.
@@ -21,7 +21,7 @@ pub fn build() -> adw::PreferencesPage {
 
     let group = adw::PreferencesGroup::builder()
         .title("FFlags")
-        .description("The client ignores any flags not on Roblox's allowlist, listed below. Written before every launch.")
+        .description("Allowlisted switches, written before every launch. Manual flags below are applied after them.")
         .build();
 
     let allowlist = adw::ActionRow::builder()
@@ -128,7 +128,145 @@ pub fn build() -> adw::PreferencesPage {
     }
 
     page.add(&group);
+
+    let manual = adw::PreferencesGroup::builder()
+        .title("Manual flags")
+        .build();
+
+    let name = adw::EntryRow::builder().title("Flag name").build();
+    name.add_prefix(&row_prefix("dialog-information-symbolic"));
+    let value = adw::EntryRow::builder().title("Value").build();
+    value.add_prefix(&row_prefix("dialog-information-symbolic"));
+    let add = adw::ActionRow::builder()
+        .title("Add a flag")
+        .subtitle("Enter a name and value, then press Enter.")
+        .build();
+    let button = gtk::Button::builder()
+        .label("Add")
+        .valign(gtk::Align::Center)
+        .css_classes(["suggested-action"])
+        .sensitive(false)
+        .build();
+    add.add_suffix(&button);
+    manual.add(&name);
+    manual.add(&value);
+    manual.add(&add);
+
+    let rows: Rc<RefCell<Vec<adw::ActionRow>>> = Rc::new(RefCell::new(Vec::new()));
+
+    let update: Rc<dyn Fn()> = {
+        let name = name.downgrade();
+        let value = value.downgrade();
+        let button = button.downgrade();
+        Rc::new(move || {
+            let (Some(name), Some(value), Some(button)) =
+                (name.upgrade(), value.upgrade(), button.upgrade())
+            else {
+                return;
+            };
+            button.set_sensitive(
+                valid_flag_name(name.text().trim()) && !value.text().trim().is_empty(),
+            );
+        })
+    };
+
+    let add_flag: Rc<dyn Fn()> = {
+        let settings = settings.clone();
+        let rows = rows.clone();
+        let manual = manual.downgrade();
+        let name = name.downgrade();
+        let value = value.downgrade();
+        let update = update.clone();
+        Rc::new(move || {
+            let (Some(manual), Some(name), Some(value)) =
+                (manual.upgrade(), name.upgrade(), value.upgrade())
+            else {
+                return;
+            };
+            let key = name.text().trim().to_string();
+            let text = value.text().trim().to_string();
+            if !valid_flag_name(&key) || text.is_empty() {
+                return;
+            }
+            settings.borrow_mut().user_flags.insert(key, text);
+            let _ = settings.borrow().save();
+            name.set_text("");
+            value.set_text("");
+            rebuild_manual(&settings, &manual, &rows);
+            update();
+            name.grab_focus();
+        })
+    };
+
+    button.connect_clicked({
+        let add_flag = add_flag.clone();
+        move |_| add_flag()
+    });
+    name.connect_apply({
+        let add_flag = add_flag.clone();
+        move |_| add_flag()
+    });
+    value.connect_apply({
+        let add_flag = add_flag.clone();
+        move |_| add_flag()
+    });
+    name.connect_changed({
+        let update = update.clone();
+        move |_| update()
+    });
+    value.connect_changed({
+        let update = update.clone();
+        move |_| update()
+    });
+
+    rebuild_manual(&settings, &manual, &rows);
+    update();
+    page.add(&manual);
     page
+}
+
+fn valid_flag_name(name: &str) -> bool {
+    let mut characters = name.chars();
+    matches!(characters.next(), Some(first) if first.is_ascii_alphabetic())
+        && characters.all(|character| character.is_ascii_alphanumeric() || character == '_')
+}
+
+fn rebuild_manual(
+    settings: &Rc<RefCell<Settings>>,
+    group: &adw::PreferencesGroup,
+    rows: &Rc<RefCell<Vec<adw::ActionRow>>>,
+) {
+    for row in rows.borrow_mut().drain(..) {
+        group.remove(&row);
+    }
+    let flags = settings.borrow().user_flags.clone();
+    for (key, value) in flags {
+        let row = adw::ActionRow::builder()
+            .title(key.as_str())
+            .subtitle(value.as_str())
+            .build();
+        row.add_prefix(&row_prefix("application-x-executable-symbolic"));
+        let remove = gtk::Button::builder()
+            .icon_name("user-trash-symbolic")
+            .tooltip_text("Remove")
+            .valign(gtk::Align::Center)
+            .css_classes(["flat"])
+            .build();
+        let group_weak = group.downgrade();
+        let rows_weak = Rc::downgrade(rows);
+        let settings = settings.clone();
+        let key = key.clone();
+        remove.connect_clicked(move |_| {
+            settings.borrow_mut().user_flags.remove(&key);
+            let _ = settings.borrow().save();
+            if let (Some(group), Some(rows)) = (group_weak.upgrade(), rows_weak.upgrade()) {
+                rebuild_manual(&settings, &group, &rows);
+            }
+        });
+        row.add_suffix(&remove);
+        group.add(&row);
+        rows.borrow_mut().push(row);
+    }
 }
 
 fn set_flag(settings: &mut Settings, key: &str, value: Option<i64>) {

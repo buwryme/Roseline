@@ -54,6 +54,7 @@ struct Inner {
     animation: Option<(Instant, f64)>,
     animating: bool,
     game: Option<Game>,
+    joined: bool,
     started: Option<Instant>,
     rpc_attempts: u32,
 }
@@ -316,6 +317,7 @@ impl Splash {
             inner.child = Some(child);
             inner.rpc = rpc;
             inner.pid = Some(pid);
+            inner.joined = false;
             inner.started = Some(Instant::now());
         }
         self.set_percent(60);
@@ -368,10 +370,12 @@ impl Splash {
                 }
             }
             session::Event::Joining(joining) => {
+                self.inner.borrow_mut().joined = true;
                 self.set_percent(90);
                 self.resolve_game(joining);
             }
-            session::Event::Left => self.left_game(),
+            session::Event::Left => self.left_game(false),
+            session::Event::Returned => self.left_game(true),
         }
     }
 
@@ -566,7 +570,7 @@ impl Splash {
         }
     }
 
-    fn left_game(self: &Rc<Self>) {
+    fn left_game(self: &Rc<Self>, close: bool) {
         let settings = Settings::load();
         let mut inner = self.inner.borrow_mut();
         inner.game = None;
@@ -574,10 +578,16 @@ impl Splash {
         if let (Some(rpc), Some(pid)) = (inner.rpc.as_mut(), pid) {
             rpc.set(pid, &launch::idle_activity(&settings));
         }
+        if close
+            && settings.behavior.close_on_leave
+            && let Some(child) = inner.child.as_mut()
+        {
+            let _ = child.kill();
+        }
     }
 
     fn finish(self: &Rc<Self>) {
-        let (pid, closed, early) = {
+        let (pid, joined, early, hold) = {
             let mut inner = self.inner.borrow_mut();
             if let Some(timer) = inner.timer.take() {
                 timer.remove();
@@ -589,7 +599,8 @@ impl Splash {
             if let (Some(rpc), Some(pid)) = (inner.rpc.as_mut(), pid) {
                 rpc.clear(pid);
             }
-            let closed = inner.game.take();
+            let _ = inner.game.take();
+            let joined = inner.joined;
             let early = inner
                 .started
                 .take()
@@ -597,17 +608,25 @@ impl Splash {
             inner.rpc = None;
             inner.child = None;
             inner.pid = None;
-            inner.hold = None;
+            let hold = inner.hold.take();
             inner.phase = Phase::Idle;
             inner.target = 0;
-            (pid, closed, early)
+            (pid, joined, early, hold)
         };
         if pid.is_some() {
             let _ = std::fs::remove_file(crate::config::Paths::get().game_pid());
         }
         self.window.destroy();
         SPLASH.with(|slot| *slot.borrow_mut() = None);
-        if pid.is_some() && closed.is_none() && early {
+        // the guest may leave children behind for a moment; let them go
+        // before the jar is read, so a late write cannot slip past.
+        if let Some(pid) = pid {
+            crate::launch::wait_for_group(pid, std::time::Duration::from_secs(3));
+        }
+        // the keyring write finishes before the application hold is released.
+        crate::cookies::seal();
+        drop(hold);
+        if pid.is_some() && !joined && early {
             early_exit_dialog();
         }
     }

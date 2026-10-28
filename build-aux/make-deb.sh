@@ -6,7 +6,12 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 
 version="$(sed -n 's/^version = "\(.*\)"/\1/p' Cargo.toml | head -1)"
-out="build/roseline_${version}_amd64.deb"
+case "${ARCH:-$(uname -m)}" in
+    x86_64) deb_arch=amd64 ;;
+    aarch64) deb_arch=arm64 ;;
+    *) echo "unsupported architecture: ${ARCH:-$(uname -m)}" >&2; exit 1 ;;
+esac
+out="build/roseline_${version}_${deb_arch}.deb"
 stage="$(mktemp -d)"
 trap 'rm -rf "$stage"' EXIT
 
@@ -18,10 +23,10 @@ installed_size="$(du -sk "$stage/data" | cut -f1)"
 cat > "$stage/control/control" <<EOF
 Package: roseline
 Version: ${version}
-Architecture: amd64
+Architecture: ${deb_arch}
 Maintainer: buwryme <hello@buwryy.net>
 Installed-Size: ${installed_size}
-Depends: libgtk-4-1, libadwaita-1-0
+Depends: libgtk-4-1, libadwaita-1-0, libsecret-1-0
 Section: games
 Priority: optional
 Homepage: https://github.com/buwryme/Roseline

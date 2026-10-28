@@ -1133,6 +1133,32 @@
     {
         "type": "archive",
         "archive-type": "tar-gzip",
+        "url": "https://static.crates.io/crates/libsecret/libsecret-0.9.0.crate",
+        "sha256": "b531fb2284b303e0f6d214043e641e5da56053a886413c726e69384f9c8d2335",
+        "dest": "cargo/vendor/libsecret-0.9.0"
+    },
+    {
+        "type": "inline",
+        "contents": "{\"package\": \"b531fb2284b303e0f6d214043e641e5da56053a886413c726e69384f9c8d2335\", \"files\": {}}",
+        "dest": "cargo/vendor/libsecret-0.9.0",
+        "dest-filename": ".cargo-checksum.json"
+    },
+    {
+        "type": "archive",
+        "archive-type": "tar-gzip",
+        "url": "https://static.crates.io/crates/libsecret-sys/libsecret-sys-0.9.0.crate",
+        "sha256": "80477411ab81517171559cbb6d48fc024122df02787551ada766c709ffa2859a",
+        "dest": "cargo/vendor/libsecret-sys-0.9.0"
+    },
+    {
+        "type": "inline",
+        "contents": "{\"package\": \"80477411ab81517171559cbb6d48fc024122df02787551ada766c709ffa2859a\", \"files\": {}}",
+        "dest": "cargo/vendor/libsecret-sys-0.9.0",
+        "dest-filename": ".cargo-checksum.json"
+    },
+    {
+        "type": "archive",
+        "archive-type": "tar-gzip",
         "url": "https://static.crates.io/crates/linux-raw-sys/linux-raw-sys-0.12.1.crate",
         "sha256": "32a66949e030da00e8c7d4434b251670a91556f4144941d37452769c25d58a53",
         "dest": "cargo/vendor/linux-raw-sys-0.12.1"

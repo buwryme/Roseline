@@ -6,6 +6,7 @@
 //! mirror Butter's `shortcuts.rs` (GPL-3.0-or-later, the Microlift
 //! contributors).
 
+use std::ffi::OsString;
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
 
@@ -41,30 +42,57 @@ pub fn run(
     if set_runner(&mut settings, &runner_id) {
         settings.save()?;
     }
+    // a missing muvm, or a VM someone else holds, stops the launch here
+    // rather than after the client download.
+    if let Some((_, binary)) = paths.runner_selected(settings.runner.as_deref()) {
+        crate::muvm::route(
+            crate::rosemary::runner_dir(&binary)?,
+            settings.compatibility.muvm,
+        )?;
+    }
     prepare_bottle(progress, &settings)?;
 
     progress.stage("Starting Roblox");
     let (_, binary) = paths
         .runner_selected(settings.runner.as_deref())
         .context("the Rosemary runner disappeared mid-launch")?;
-    let runner_dir = binary
-        .parent()
-        .and_then(Path::parent)
-        .context("the Rosemary runner has no directory")?;
+    let runner_dir = crate::rosemary::runner_dir(&binary)?;
     crate::runner::refresh_launcher(runner_dir)?;
+    let through_vm = crate::muvm::route(runner_dir, settings.compatibility.muvm)?;
     std::fs::create_dir_all(paths.logs())?;
     let started = now();
     let log_path = paths.logs().join(format!("launch-{started}.log"));
-    let log = std::fs::File::create(&log_path)?;
+    let log = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(&log_path)?;
     let error_log = log.try_clone()?;
 
-    let mut command = Command::new(binary);
+    let mut arguments: Vec<OsString> = vec!["run".into(), paths.app_bundle().into()];
+    arguments.extend(
+        guest_arguments(uri, &paths.prefix())
+            .into_iter()
+            .map(OsString::from),
+    );
+    let mut command = if through_vm {
+        // the VM writes the log itself; muvm passes no output back.
+        crate::muvm::command(
+            &binary,
+            &arguments,
+            &environment(&settings),
+            &paths.app(),
+            &log_path,
+            settings.compatibility.vm_memory,
+        )?
+    } else {
+        let mut command = Command::new(&binary);
+        command
+            .args(&arguments)
+            .envs(environment(&settings))
+            .current_dir(paths.app());
+        command
+    };
     command
-        .arg("run")
-        .arg(paths.app_bundle())
-        .args(guest_arguments(uri, &paths.prefix()))
-        .envs(environment(&settings))
-        .current_dir(paths.app())
         .stdin(Stdio::null())
         .stdout(Stdio::from(log))
         .stderr(Stdio::from(error_log));
@@ -75,6 +103,9 @@ pub fn run(
         .spawn()
         .with_context(|| "could not start Rosemary")?;
     crate::util::write_atomic(&paths.game_pid(), child.id().to_string().as_bytes())?;
+    if settings.server_location.enabled {
+        spawn_toast_helper(&log_path, child.id());
+    }
 
     // the child writes its guest log to this launch's file; tail that exact
     // file, so a stale log from another instance can never be mistaken for it.
@@ -95,6 +126,34 @@ pub fn run(
     });
 
     Ok((child, event_receiver))
+}
+
+fn spawn_toast_helper(log: &Path, game_pid: u32) {
+    let Ok(executable) = std::env::current_exe() else {
+        return;
+    };
+    let Ok(file) = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(log)
+    else {
+        return;
+    };
+    let Ok(error) = file.try_clone() else {
+        return;
+    };
+    let mut command = Command::new(executable);
+    command
+        .arg("--toast-helper")
+        .arg(log)
+        .arg(game_pid.to_string())
+        .stdin(Stdio::null())
+        .stdout(Stdio::from(file))
+        .stderr(Stdio::from(error));
+    std::os::unix::process::CommandExt::process_group(&mut command, 0);
+    if let Err(error) = command.spawn() {
+        eprintln!("roseline-toast: could not start the helper: {error}");
+    }
 }
 
 /// what setup downloads before the first launch: a runner, the prefix, the
@@ -123,11 +182,27 @@ fn set_runner(settings: &mut Settings, runner_id: &str) -> bool {
 fn prepare_bottle(progress: &Progress, settings: &Settings) -> Result<()> {
     ensure_prefix(progress, settings)?;
     crate::roblox::ensure(progress)?;
+    crate::cookies::prepare();
     crate::roblox::brand()?;
     crate::overlay::apply(progress)?;
     crate::fonts::apply(settings)?;
     crate::flags::write(settings)?;
     Ok(())
+}
+
+/// wait for the guest's process group to drain, so nothing can write the
+/// cookie jar after it has been sealed.
+pub fn wait_for_group(pid: u32, timeout: std::time::Duration) {
+    let started = std::time::Instant::now();
+    while started.elapsed() < timeout {
+        // SAFETY: signal 0 only probes the process group.
+        let alive = unsafe { libc::kill(-(pid as i32), 0) } == 0
+            || std::io::Error::last_os_error().raw_os_error() == Some(libc::EPERM);
+        if !alive {
+            return;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(50));
+    }
 }
 
 /// take a wedged guest out without asking.
@@ -163,9 +238,8 @@ fn ensure_prefix(progress: &Progress, settings: &Settings) -> Result<()> {
         return Ok(());
     }
     progress.stage("Creating the prefix and downloading the Darwin base");
-    let mut command = crate::rosemary::create_command(settings)?;
     let log = paths.logs().join("prefix-create.log");
-    let status = crate::util::run_logged(&mut command, &log)?;
+    let status = crate::rosemary::create(settings, &log)?;
     if !status.success() {
         bail!("the prefix could not be created; see {}", log.display());
     }
@@ -440,6 +514,29 @@ mod tests {
         assert!(!set_runner(&mut settings, "rosemary-v0.4.2-official"));
         assert!(set_runner(&mut settings, "rosemary-v0.5.0-official"));
         assert_eq!(settings.runner.as_deref(), Some("rosemary-v0.5.0-official"));
+    }
+
+    #[test]
+    fn waits_for_the_guest_process_group_to_drain() {
+        use std::os::unix::process::CommandExt;
+
+        let mut command = std::process::Command::new("sleep");
+        command.arg("0.4").process_group(0);
+        let mut child = command.spawn().unwrap();
+        let pid = child.id();
+        // the leader is reaped in production before the wait starts; give
+        // this child the same treatment once it has had time to exit.
+        let reaper = std::thread::spawn(move || {
+            std::thread::sleep(std::time::Duration::from_millis(600));
+            let _ = child.wait();
+        });
+        let started = std::time::Instant::now();
+
+        wait_for_group(pid, std::time::Duration::from_secs(3));
+
+        assert!(started.elapsed() >= std::time::Duration::from_millis(500));
+        assert!(started.elapsed() < std::time::Duration::from_secs(2));
+        reaper.join().unwrap();
     }
 
     #[test]

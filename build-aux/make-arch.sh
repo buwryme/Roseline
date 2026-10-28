@@ -9,10 +9,11 @@ cd "$(dirname "$0")/.."
 version="$(sed -n 's/^version = "\(.*\)"/\1/p' Cargo.toml | head -1)"
 version="${version//-/.}"
 pkgrel=1
-arch=x86_64
+arch="${ARCH:-$(uname -m)}"
 stage="$(mktemp -d)"
 trap 'rm -rf "$stage"' EXIT
 
+cargo build --release --locked
 make install DESTDIR="$stage" PREFIX=/usr
 strip --strip-unneeded "$stage/usr/bin/roseline" || true
 
@@ -29,6 +30,7 @@ arch = ${arch}
 license = GPL-3.0-or-later
 depend = gtk4
 depend = libadwaita
+depend = libsecret
 EOF
 
 mkdir -p build

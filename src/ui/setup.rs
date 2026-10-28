@@ -160,7 +160,9 @@ fn root_page(
     graphics.add(&super::graphics_page::device_row(&settings));
     graphics.add(&super::graphics_page::api_row(&settings));
     content.append(&graphics);
+    content.append(&server_location_group(&settings));
     content.append(&discord_group(&settings));
+    content.append(&player_group(&settings));
     content.append(&advanced_section(&settings, &selected));
 
     let note = gtk::Label::builder()
@@ -213,6 +215,29 @@ fn root_page(
         .build()
 }
 
+fn server_location_group(settings: &Rc<RefCell<Settings>>) -> adw::PreferencesGroup {
+    let group = adw::PreferencesGroup::builder()
+        .title("Server Location")
+        .build();
+
+    let enabled = adw::SwitchRow::builder()
+        .title("Show server location")
+        .subtitle("Sends a notification with the server's city and country after joining.")
+        .active(settings.borrow().server_location.enabled)
+        .build();
+    enabled.add_prefix(&row_prefix("mark-location-symbolic"));
+    enabled.connect_active_notify(glib::clone!(
+        #[strong]
+        settings,
+        move |row| {
+            settings.borrow_mut().server_location.enabled = row.is_active();
+            let _ = settings.borrow().save();
+        }
+    ));
+    group.add(&enabled);
+    group
+}
+
 fn discord_group(settings: &Rc<RefCell<Settings>>) -> adw::PreferencesGroup {
     let group = adw::PreferencesGroup::builder()
         .title("Discord RPC")
@@ -256,6 +281,29 @@ fn discord_group(settings: &Rc<RefCell<Settings>>) -> adw::PreferencesGroup {
 }
 
 /// the folded Advanced block: the runner picker and the environment lists.
+fn player_group(settings: &Rc<RefCell<Settings>>) -> adw::PreferencesGroup {
+    let group = adw::PreferencesGroup::builder().title("Player").build();
+
+    let close = adw::SwitchRow::builder()
+        .title("Close when leaving")
+        .subtitle(
+            "Closes Roblox when you leave an experience, instead of returning to the home screen.",
+        )
+        .active(settings.borrow().behavior.close_on_leave)
+        .build();
+    close.add_prefix(&row_prefix("application-exit-symbolic"));
+    close.connect_active_notify(glib::clone!(
+        #[strong]
+        settings,
+        move |row| {
+            settings.borrow_mut().behavior.close_on_leave = row.is_active();
+            let _ = settings.borrow().save();
+        }
+    ));
+    group.add(&close);
+    group
+}
+
 fn advanced_section(
     settings: &Rc<RefCell<Settings>>,
     selected: &Rc<RefCell<Option<String>>>,

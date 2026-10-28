@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 mod config;
+mod cookies;
 mod flags;
 mod fonts;
 mod gameinfo;
@@ -8,6 +9,7 @@ mod github;
 mod gpu;
 mod icons;
 mod launch;
+mod muvm;
 mod net;
 mod overlay;
 mod progress;
@@ -15,6 +17,7 @@ mod roblox;
 mod rosemary;
 mod rpc;
 mod runner;
+mod server_toast;
 mod session;
 mod settings;
 mod ui;
@@ -24,6 +27,20 @@ use adw::prelude::*;
 use gtk::{gio, glib};
 
 fn main() -> glib::ExitCode {
+    let arguments: Vec<String> = std::env::args().collect();
+    if let Some(index) = arguments
+        .iter()
+        .position(|argument| argument == "--toast-helper")
+    {
+        let log = arguments.get(index + 1).map(std::path::PathBuf::from);
+        let pid = arguments
+            .get(index + 2)
+            .and_then(|value| value.parse::<u32>().ok());
+        if let (Some(log), Some(pid)) = (log, pid) {
+            server_toast::helper(log, pid);
+        }
+        return glib::ExitCode::SUCCESS;
+    }
     glib::set_application_name(config::DISPLAY_NAME);
 
     let app = adw::Application::builder()

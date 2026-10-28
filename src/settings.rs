@@ -13,6 +13,7 @@ use crate::config::Paths;
 #[serde(default)]
 pub struct Settings {
     pub graphics: Graphics,
+    pub compatibility: Compatibility,
     pub prefix: Prefix,
     #[serde(default, skip_serializing_if = "Fonts::is_empty")]
     pub fonts: Fonts,
@@ -20,8 +21,63 @@ pub struct Settings {
     pub runner: Option<String>,
     /// flag selections by name; only allowlisted presets are used.
     pub flags: BTreeMap<String, String>,
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub user_flags: BTreeMap<String, String>,
     pub discord: Discord,
+    pub server_location: ServerLocation,
+    pub behavior: Behavior,
     pub environment: Environment,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(default)]
+pub struct Compatibility {
+    /// Allow x86_64 runners through muvm on ARM64 hosts.
+    pub muvm: bool,
+    pub vm_memory: VmMemory,
+}
+
+impl Default for Compatibility {
+    fn default() -> Self {
+        Self {
+            muvm: cfg!(target_arch = "aarch64"),
+            vm_memory: VmMemory::Auto,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum VmMemory {
+    #[serde(rename = "auto")]
+    Auto,
+    #[serde(rename = "4-gib")]
+    FourGiB,
+    #[serde(rename = "6-gib")]
+    SixGiB,
+    #[serde(rename = "8-gib")]
+    EightGiB,
+}
+
+impl VmMemory {
+    pub const ALL: [Self; 4] = [Self::Auto, Self::FourGiB, Self::SixGiB, Self::EightGiB];
+
+    pub fn mib(self) -> Option<u32> {
+        match self {
+            Self::Auto => None,
+            Self::FourGiB => Some(4096),
+            Self::SixGiB => Some(6144),
+            Self::EightGiB => Some(8192),
+        }
+    }
+
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::Auto => "muvm default",
+            Self::FourGiB => "4 GiB",
+            Self::SixGiB => "6 GiB",
+            Self::EightGiB => "8 GiB",
+        }
+    }
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
@@ -141,6 +197,18 @@ pub struct Environment {
     pub runner: Vec<String>,
 }
 
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(default)]
+pub struct ServerLocation {
+    pub enabled: bool,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(default)]
+pub struct Behavior {
+    pub close_on_leave: bool,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default)]
 pub struct Discord {
@@ -220,11 +288,46 @@ mod tests {
         assert!(settings.fonts.mono.is_none());
         assert!(settings.runner.is_none());
         assert!(!settings.discord.enabled);
+        assert!(!settings.server_location.enabled);
         assert!(settings.discord.show_game);
         assert!(!settings.discord.join_button);
         assert!(settings.flags.is_empty());
+        assert!(settings.user_flags.is_empty());
         assert!(settings.environment.guest.is_empty());
         assert!(settings.environment.runner.is_empty());
+    }
+
+    #[test]
+    fn server_location_is_off_by_default_and_round_trips() {
+        let defaults: Settings = toml::from_str("").unwrap();
+        assert!(!defaults.server_location.enabled);
+        let settings: Settings = toml::from_str("[server_location]\nenabled = true\n").unwrap();
+        assert!(settings.server_location.enabled);
+        let restored: Settings = toml::from_str(&settings.render().unwrap()).unwrap();
+        assert!(restored.server_location.enabled);
+    }
+
+    #[test]
+    fn manual_flags_are_read_from_the_config() {
+        let settings: Settings =
+            toml::from_str("[user_flags]\nFFlagSomething = \"True\"\n").unwrap();
+        assert_eq!(
+            settings
+                .user_flags
+                .get("FFlagSomething")
+                .map(String::as_str),
+            Some("True")
+        );
+    }
+
+    #[test]
+    fn close_on_leave_is_off_by_default_and_round_trips() {
+        let defaults: Settings = toml::from_str("").unwrap();
+        assert!(!defaults.behavior.close_on_leave);
+        let settings: Settings = toml::from_str("[behavior]\nclose_on_leave = true\n").unwrap();
+        assert!(settings.behavior.close_on_leave);
+        let restored: Settings = toml::from_str(&settings.render().unwrap()).unwrap();
+        assert!(restored.behavior.close_on_leave);
     }
 
     #[test]
@@ -249,6 +352,19 @@ mod tests {
         assert_eq!(settings.graphics.backend, Backend::OpenGL);
         let text = toml::to_string(&Settings::default()).unwrap();
         assert!(text.contains("backend = \"auto\""));
+    }
+
+    #[test]
+    fn arm_compatibility_defaults_and_opt_out_survive_loading() {
+        let defaults: Settings = toml::from_str("").unwrap();
+        assert_eq!(defaults.compatibility.muvm, cfg!(target_arch = "aarch64"));
+        let settings: Settings =
+            toml::from_str("[compatibility]\nmuvm = false\nvm_memory = \"auto\"\n").unwrap();
+        let restored: Settings = toml::from_str(&settings.render().unwrap()).unwrap();
+        assert!(!restored.compatibility.muvm);
+        assert_eq!(restored.compatibility.vm_memory, VmMemory::Auto);
+        let capped: Settings = toml::from_str("[compatibility]\nvm_memory = \"4-gib\"\n").unwrap();
+        assert_eq!(capped.compatibility.vm_memory.mib(), Some(4096));
     }
 
     #[test]
