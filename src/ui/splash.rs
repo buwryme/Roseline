@@ -618,6 +618,11 @@ impl Splash {
         }
         self.window.destroy();
         SPLASH.with(|slot| *slot.borrow_mut() = None);
+        // the guest may leave children behind for a moment; let them go
+        // before the jar is read, so a late write cannot slip past.
+        if let Some(pid) = pid {
+            crate::launch::wait_for_group(pid, std::time::Duration::from_secs(3));
+        }
         // the keyring write finishes before the application hold is released.
         crate::cookies::seal();
         drop(hold);

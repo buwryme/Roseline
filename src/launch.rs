@@ -190,6 +190,21 @@ fn prepare_bottle(progress: &Progress, settings: &Settings) -> Result<()> {
     Ok(())
 }
 
+/// wait for the guest's process group to drain, so nothing can write the
+/// cookie jar after it has been sealed.
+pub fn wait_for_group(pid: u32, timeout: std::time::Duration) {
+    let started = std::time::Instant::now();
+    while started.elapsed() < timeout {
+        // SAFETY: signal 0 only probes the process group.
+        let alive = unsafe { libc::kill(-(pid as i32), 0) } == 0
+            || std::io::Error::last_os_error().raw_os_error() == Some(libc::EPERM);
+        if !alive {
+            return;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(50));
+    }
+}
+
 /// take a wedged guest out without asking.
 pub fn force_kill(pid: u32) {
     // SAFETY: a plain signal to a pid this process spawned.
@@ -499,6 +514,29 @@ mod tests {
         assert!(!set_runner(&mut settings, "rosemary-v0.4.2-official"));
         assert!(set_runner(&mut settings, "rosemary-v0.5.0-official"));
         assert_eq!(settings.runner.as_deref(), Some("rosemary-v0.5.0-official"));
+    }
+
+    #[test]
+    fn waits_for_the_guest_process_group_to_drain() {
+        use std::os::unix::process::CommandExt;
+
+        let mut command = std::process::Command::new("sleep");
+        command.arg("0.4").process_group(0);
+        let mut child = command.spawn().unwrap();
+        let pid = child.id();
+        // the leader is reaped in production before the wait starts; give
+        // this child the same treatment once it has had time to exit.
+        let reaper = std::thread::spawn(move || {
+            std::thread::sleep(std::time::Duration::from_millis(600));
+            let _ = child.wait();
+        });
+        let started = std::time::Instant::now();
+
+        wait_for_group(pid, std::time::Duration::from_secs(3));
+
+        assert!(started.elapsed() >= std::time::Duration::from_millis(500));
+        assert!(started.elapsed() < std::time::Duration::from_secs(2));
+        reaper.join().unwrap();
     }
 
     #[test]
