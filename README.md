@@ -90,6 +90,11 @@ make install PREFIX=~/.local
 - Optional Discord RPC, with Join/Show Game and etc...
 - Optional close when leaving game
 
+## Security
+
+- Session cookies are stored using `libsecret`. Decrypted into plaintext during sessions only, whereas closing the game encrypts it back up and deletes the cookie.
+  Existing cookies are migrated automatically. This is enforced.
+
 ## Note:
 
 - Games using video playback will crash the game
