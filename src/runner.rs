@@ -261,18 +261,73 @@ fn copy_link(from: &Path, to: &Path) -> Result<()> {
 
 /// install the latest stable build unless it is already here.
 pub fn ensure(progress: &Progress) -> Result<String> {
+    ensure_at(&Paths::get(), progress)
+}
+
+fn ensure_at(paths: &Paths, progress: &Progress) -> Result<String> {
     progress.stage("Checking for the latest Rosemary release");
-    let release = crate::github::latest_release()?;
-    let id = id_for(&release.tag_name);
-    if Paths::get()
-        .runners()
-        .join(&id)
-        .join("bin/rosemary")
-        .is_file()
-    {
-        return Ok(id);
+    match crate::github::latest_release() {
+        Ok(release) => {
+            remember_latest(paths, &release.tag_name);
+            let id = id_for(&release.tag_name);
+            if paths.runners().join(&id).join("bin/rosemary").is_file() {
+                return Ok(id);
+            }
+            install(&release, progress)
+        }
+        Err(error) => {
+            // a rate limit or an outage must not stop a launch; what is
+            // installed keeps working, and the cached tag says what the
+            // newest build was last time the API answered.
+            match cached_id(paths) {
+                Some(id) => {
+                    eprintln!(
+                        "roseline: could not check for a Rosemary update ({error:#}); launching with {id}"
+                    );
+                    Ok(id)
+                }
+                None => bail!(
+                    "no Rosemary runner is installed, and checking the release failed: {error:#}"
+                ),
+            }
+        }
     }
-    install(&release, progress)
+}
+
+/// the id of the cached latest tag when it is still installed, else the
+/// newest installed official.
+fn cached_id(paths: &Paths) -> Option<String> {
+    if let Some(tag) = cached_latest(paths) {
+        let id = id_for(&tag);
+        if paths.runners().join(&id).join("bin/rosemary").is_file() {
+            return Some(id);
+        }
+    }
+    let (id, _) = installed_at(paths).last()?.clone();
+    Some(id)
+}
+
+#[derive(serde::Serialize, serde::Deserialize)]
+struct Latest {
+    tag: String,
+}
+
+fn cached_latest(paths: &Paths) -> Option<String> {
+    if let Ok(text) = std::fs::read_to_string(paths.rosemary_cache())
+        && let Ok(latest) = toml::from_str::<Latest>(&text)
+    {
+        return Some(latest.tag);
+    }
+    None
+}
+
+fn remember_latest(paths: &Paths, tag: &str) {
+    let latest = Latest {
+        tag: tag.to_string(),
+    };
+    if let Ok(text) = toml::to_string(&latest) {
+        let _ = crate::util::write_atomic(&paths.rosemary_cache(), text.as_bytes());
+    }
 }
 
 /// install one chosen release unless it is already here.
@@ -544,6 +599,39 @@ mod tests {
         assert!(dir.join("Rosemary/glibc/lib/ld.so").is_file());
         assert!(dir.join("Rosemary/bin/rosemary").is_file());
         assert!(dir.join("bin/rosemary").is_file());
+        let _ = std::fs::remove_dir_all(_root);
+    }
+
+    #[test]
+    fn the_cached_tag_remembers_the_newest_release() {
+        let (_root, paths) = temp_paths("cache");
+
+        assert_eq!(cached_latest(&paths), None);
+        remember_latest(&paths, "v0.3.2");
+        assert_eq!(cached_latest(&paths), Some("v0.3.2".to_string()));
+
+        // a torn or corrupted cache reads as absent, not fatal.
+        std::fs::write(paths.rosemary_cache(), b"garbage").unwrap();
+        assert_eq!(cached_latest(&paths), None);
+        let _ = std::fs::remove_dir_all(_root);
+    }
+
+    #[test]
+    fn a_down_api_serves_installed_runners() {
+        let (_root, paths) = temp_paths("offline");
+        assert_eq!(cached_id(&paths), None);
+
+        let official = paths.runners().join(id_for("v0.3.0"));
+        std::fs::create_dir_all(official.join("bin")).unwrap();
+        std::fs::write(official.join("bin/rosemary"), b"#!/bin/sh\n").unwrap();
+        assert_eq!(cached_id(&paths), Some(id_for("v0.3.0")));
+
+        // a cache whose build is still installed wins over plain "newest".
+        remember_latest(&paths, "v0.3.4");
+        let newer = paths.runners().join(id_for("v0.3.4"));
+        std::fs::create_dir_all(newer.join("bin")).unwrap();
+        std::fs::write(newer.join("bin/rosemary"), b"#!/bin/sh\n").unwrap();
+        assert_eq!(cached_id(&paths), Some(id_for("v0.3.4")));
         let _ = std::fs::remove_dir_all(_root);
     }
 

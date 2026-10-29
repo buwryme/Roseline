@@ -103,6 +103,11 @@ impl Paths {
         self.cache.join("downloads")
     }
 
+    /// the newest Rosemary release the API last reported.
+    pub fn rosemary_cache(&self) -> PathBuf {
+        self.cache.join("rosemary-latest.toml")
+    }
+
     pub fn settings_file(&self) -> PathBuf {
         self.config.join("settings.toml")
     }
