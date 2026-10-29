@@ -536,8 +536,8 @@ jobs:
           maybe_require "$BUILD_DEB" "roseline_${VERSION}_amd64.deb"
           maybe_require "$BUILD_DEB_ARM64" "roseline_${VERSION}_arm64.deb"
           maybe_require "$BUILD_FLATPAK" "Roseline-$VERSION-x86_64.flatpak"
-          maybe_require "$BUILD_APPIMAGE" "Roseline-$VERSION-x86_64.AppImage"
-          maybe_require "$BUILD_APPIMAGE_ARM64" "Roseline-$VERSION-aarch64.AppImage"
+          maybe_require "$BUILD_APPIMAGE" "Roséline-$VERSION-x86_64.AppImage"
+          maybe_require "$BUILD_APPIMAGE_ARM64" "Roséline-$VERSION-aarch64.AppImage"
           maybe_require "$BUILD_NIX" "roseline-$VERSION-x86_64-nix.tar.xz"
           maybe_require "$BUILD_NIX_ARM64" "roseline-$VERSION-aarch64-nix.tar.xz"
 

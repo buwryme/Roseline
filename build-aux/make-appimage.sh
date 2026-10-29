@@ -10,6 +10,7 @@ version="$(sed -n 's/^version = "\(.*\)"/\1/p' Cargo.toml | head -1)"
 arch="${ARCH:-$(uname -m)}"
 appdir="build/AppDir"
 tools="build/tools"
+rm -rf "$appdir"
 mkdir -p "$appdir/usr/bin" "$appdir/usr/lib" "$appdir/usr/share/applications" \
          "$appdir/usr/share/icons/hicolor/scalable/apps" "$tools"
 
@@ -26,10 +27,23 @@ install -Dm644 data/icons/hicolor/128x128/apps/net.buwryy.Roseline.png \
 install -Dm644 LICENSE "$appdir/usr/share/licenses/roseline/LICENSE"
 install -Dm644 NOTICE "$appdir/usr/share/licenses/roseline/NOTICE"
 strip --strip-unneeded "$appdir/usr/bin/roseline" || true
+mv "$appdir/usr/bin/roseline" "$appdir/usr/bin/roseline.real"
+cat > "$appdir/usr/bin/roseline" <<'EOF'
+#!/bin/sh
+# the runtime launches the desktop entry's executable straight at this
+# file, so the loader dance has to live here; AppRun reaches the same file.
+here=$(dirname "$(readlink -f "$0")")
+lib=$(dirname "$here")/usr/lib
+LD_LIBRARY_PATH="$lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+export LD_LIBRARY_PATH
+exec "$lib/ld-linux" \
+    --library-path "$lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}" \
+    "$here/roseline.real" "$@"
+EOF
+chmod 755 "$appdir/usr/bin/roseline"
 cat > "$appdir/AppRun" <<'EOF'
 #!/bin/sh
 here=$(dirname "$(readlink -f "$0")")
-export LD_LIBRARY_PATH="$here/usr/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
 exec "$here/usr/bin/roseline" "$@"
 EOF
 chmod 755 "$appdir/AppRun"
@@ -47,19 +61,42 @@ ln -sf usr/share/icons/hicolor/scalable/apps/net.buwryy.Roseline.svg \
 ln -sf usr/share/applications/net.buwryy.Roseline.desktop \
     "$appdir/net.buwryy.Roseline.desktop"
 
-# bundle everything the binary loads beyond glibc
+# bundle the C library together with its dynamic loader: an AppImage is
+# expected to run wherever the glibc of the build machine is too new.
+# the /lib64 view can flicker in sandboxes, so cp probes every directory
+# and the last one standing wins.
+glibc_dirs="/lib64 /usr/lib64 /lib /usr/lib /lib/${arch}-linux-gnu /usr/lib/${arch}-linux-gnu"
+
+for d in $glibc_dirs; do
+    if cp -Ln "$d/ld-linux-${arch}.so.2" "$appdir/usr/lib/ld-linux"; then break; fi
+done
+if ! ls "$appdir/usr/lib/ld-linux" >/dev/null 2>&1; then
+    echo "no dynamic loader for ${arch} was found" >&2
+    exit 1
+fi
+for name in libc.so.6 libm.so.6 libmvec.so.1 libdl.so.2 libpthread.so.0 \
+    librt.so.1 libresolv.so.2 libutil.so.1 libanl.so.1 \
+    libnss_files.so.2 libnss_dns.so.2 libnss_compat.so.2 \
+    libnss_nis.so.2 libnss_nisplus.so.2 libnss_hesiod.so.2 \
+    libgcc_s.so.1; do
+    for d in $glibc_dirs; do
+        cp -Ln "$d/$name" "$appdir/usr/lib/" 2>/dev/null && break || true
+    done
+done
+
+# bundle everything else the binary loads beyond system glibc
 while read -r line; do
     case "$line" in
         *"=>"*) lib="${line##*=> }" ;;
         *) lib="$line" ;;
     esac
     lib="${lib%% *}"
-    [ -f "$lib" ] || continue
-    # these belong to the host's glibc/loader; bundling them breaks AppImages.
+    ls "$lib" >/dev/null 2>&1 || continue
+    # glibc family files live in the C library; bundling them breaks AppImages.
     case "$(basename "$lib")" in
         libc.so.*|libm.so.*|libmvec.so.*|libdl.so.*|libpthread.so.*|librt.so.*| \
         libresolv.so.*|libutil.so.*|libnsl.so.*|libanl.so.*|libgcc_s.so.*| \
-        ld-linux*.so.*) continue ;;
+        libstdc++.so.*|ld-linux*.so.*) continue ;;
     esac
     case "$lib" in
         /*) cp -Ln "$lib" "$appdir/usr/lib/" || true ;;
@@ -73,5 +110,5 @@ if [ ! -x "$tools/appimagetool-$arch" ]; then
 fi
 
 ARCH="$arch" "$tools/appimagetool-$arch" --appimage-extract-and-run \
-    "$appdir" "build/Roseline-${version}-${arch}.AppImage"
-echo "built build/Roseline-${version}-${arch}.AppImage"
+    "$PWD/$appdir" "$PWD/build/Roséline-${version}-${arch}.AppImage"
+echo "built $PWD/build/Roséline-${version}-${arch}.AppImage"
