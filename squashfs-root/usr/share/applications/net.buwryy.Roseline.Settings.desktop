@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Application
+Name=Roséline Settings
+Comment=Manage Roséline's graphics, content and runner
+Exec=roseline --settings
+Icon=net.buwryy.Roseline
+Terminal=false
+StartupNotify=true
+Categories=Settings;
+Keywords=Roblox;Rosemary;
+StartupWMClass=net.buwryy.Roseline

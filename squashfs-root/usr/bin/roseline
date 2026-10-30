@@ -1,0 +1,10 @@
+#!/bin/sh
+# the runtime launches the desktop entry's executable straight at this
+# file, so the loader dance has to live here; AppRun reaches the same file.
+here=$(dirname "$(readlink -f "$0")")
+lib=$(dirname "$(dirname "$here")")/usr/lib
+LD_LIBRARY_PATH="$lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+export LD_LIBRARY_PATH
+exec "$lib/ld-linux.so.2" \
+    --library-path "$lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}" \
+    "$here/roseline.real" "$@"
