@@ -67,15 +67,16 @@ ln -sf usr/share/applications/net.buwryy.Roseline.desktop \
 # and the last one standing wins.
 glibc_dirs="/lib64 /usr/lib64 /lib /usr/lib /lib/${arch}-linux-gnu /usr/lib/${arch}-linux-gnu"
 
+loader_ok=""
 for d in $glibc_dirs; do
-    if cp -Ln "$d/ld-linux-${arch}.so.2" "$appdir/usr/lib/ld-linux" 2>/dev/null; then break; fi
-    if cp -Ln "$d/ld-linux-x86-64.so.2" "$appdir/usr/lib/ld-linux" 2>/dev/null; then break; fi
-    if cp -Ln "$d/ld-linux-aarch64.so.2" "$appdir/usr/lib/ld-linux" 2>/dev/null; then break; fi
+    for loader in "ld-linux-${arch}.so.2" "ld-linux-x86-64.so.2" "ld-linux-aarch64.so.2"; do
+        if cp -Ln "$d/$loader" "$appdir/usr/lib/ld-linux" 2>/dev/null; then
+            loader_ok=1
+            break 2
+        fi
+    done
 done
-if ! ls "$appdir/usr/lib/ld-linux" >/dev/null 2>&1; then
-    echo "no dynamic loader for ${arch} was found" >&2
-    exit 1
-fi
+[ -n "$loader_ok" ] || { echo "no dynamic loader for ${arch} was found" >&2; exit 1; }
 for name in libc.so.6 libm.so.6 libmvec.so.1 libdl.so.2 libpthread.so.0 \
     librt.so.1 libresolv.so.2 libutil.so.1 libanl.so.1 \
     libnss_files.so.2 libnss_dns.so.2 libnss_compat.so.2 \
