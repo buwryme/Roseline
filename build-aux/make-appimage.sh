@@ -68,7 +68,9 @@ ln -sf usr/share/applications/net.buwryy.Roseline.desktop \
 glibc_dirs="/lib64 /usr/lib64 /lib /usr/lib /lib/${arch}-linux-gnu /usr/lib/${arch}-linux-gnu"
 
 for d in $glibc_dirs; do
-    if cp -Ln "$d/ld-linux-${arch}.so.2" "$appdir/usr/lib/ld-linux"; then break; fi
+    if cp -Ln "$d/ld-linux-${arch}.so.2" "$appdir/usr/lib/ld-linux" 2>/dev/null; then break; fi
+    if cp -Ln "$d/ld-linux-x86-64.so.2" "$appdir/usr/lib/ld-linux" 2>/dev/null; then break; fi
+    if cp -Ln "$d/ld-linux-aarch64.so.2" "$appdir/usr/lib/ld-linux" 2>/dev/null; then break; fi
 done
 if ! ls "$appdir/usr/lib/ld-linux" >/dev/null 2>&1; then
     echo "no dynamic loader for ${arch} was found" >&2
