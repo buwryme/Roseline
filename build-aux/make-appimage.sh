@@ -33,10 +33,10 @@ cat > "$appdir/usr/bin/roseline" <<'EOF'
 # the runtime launches the desktop entry's executable straight at this
 # file, so the loader dance has to live here; AppRun reaches the same file.
 here=$(dirname "$(readlink -f "$0")")
-lib=$(dirname "$here")/usr/lib
+lib=$(dirname "$(dirname "$here")")/usr/lib
 LD_LIBRARY_PATH="$lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
 export LD_LIBRARY_PATH
-exec "$lib/ld-linux" \
+exec "$lib/ld-linux.so.2" \
     --library-path "$lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}" \
     "$here/roseline.real" "$@"
 EOF
@@ -63,27 +63,31 @@ ln -sf usr/share/applications/net.buwryy.Roseline.desktop \
 
 # bundle the C library together with its dynamic loader: an AppImage is
 # expected to run wherever the glibc of the build machine is too new.
-# the /lib64 view can flicker in sandboxes, so cp probes every directory
-# and the last one standing wins.
-glibc_dirs="/lib64 /usr/lib64 /lib /usr/lib /lib/${arch}-linux-gnu /usr/lib/${arch}-linux-gnu"
+# the loader goes in under its generic name, because app catalog scanners
+# look for ld-linux*.so* to decide the bundle is complete. retries paper
+# over sandboxes where the /lib64 view flickers mid-walk.
+exists() { ls -- "$1" >/dev/null 2>&1; }
 
-loader_ok=""
-for d in $glibc_dirs; do
-    for loader in "ld-linux-${arch}.so.1" "ld-linux-${arch}.so.2" "ld-linux-x86-64.so.2" "ld-linux-aarch64.so.1"; do
-        if cp -Ln "$d/$loader" "$appdir/usr/lib/ld-linux" 2>/dev/null; then
-            loader_ok=1
-            break 2
-        fi
+glibc_dirs="/lib64 /usr/lib64 /lib /usr/lib /lib/${arch}-linux-gnu /usr/lib/${arch}-linux-gnu"
+for solve in "ld-linux-${arch}.so.1" "ld-linux-${arch}.so.2" "ld-linux-x86-64.so.2" "ld-linux-aarch64.so.2"; do
+    for d in $glibc_dirs; do
+        for try in 1 2 3 4 5; do
+            cp -Ln -- "$d/$solve" "$appdir/usr/lib/ld-linux.so.2" 2>/dev/null && break 3
+            sleep 0.2
+        done
     done
 done
-[ -n "$loader_ok" ] || { echo "no dynamic loader for ${arch} was found" >&2; exit 1; }
+exists "$appdir/usr/lib/ld-linux.so.2" || { echo "no dynamic loader for ${arch} was found" >&2; exit 1; }
 for name in libc.so.6 libm.so.6 libmvec.so.1 libdl.so.2 libpthread.so.0 \
     librt.so.1 libresolv.so.2 libutil.so.1 libanl.so.1 \
     libnss_files.so.2 libnss_dns.so.2 libnss_compat.so.2 \
     libnss_nis.so.2 libnss_nisplus.so.2 libnss_hesiod.so.2 \
     libgcc_s.so.1; do
     for d in $glibc_dirs; do
-        cp -Ln "$d/$name" "$appdir/usr/lib/" 2>/dev/null && break || true
+        for try in 1 2 3 4 5; do
+            cp -Ln -- "$d/$name" "$appdir/usr/lib/" 2>/dev/null && break 3
+            sleep 0.1
+        done
     done
 done
 
