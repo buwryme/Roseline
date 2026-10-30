@@ -1,0 +1,47 @@
+name: AppImage (aarch64)
+
+on:
+  workflow_dispatch:
+    inputs:
+      commit:
+        description: "Full 40-character commit SHA to build from"
+        required: true
+        type: string
+      version:
+        description: "Version without the v"
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  appimage:
+    name: AppImage (aarch64)
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 90
+    container:
+      image: ubuntu:24.04
+    steps:
+      - name: Install git for checkout
+        run: apt-get update && apt-get install -y git ca-certificates
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.commit }}
+      - name: Build package
+        run: |
+          set -euo pipefail
+          apt-get install -y build-essential pkg-config libgtk-4-dev libadwaita-1-dev libsecret-1-dev \
+            libglib2.0-dev curl file imagemagick fuse zsync jq
+          curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --profile minimal
+          . "$HOME/.cargo/env"
+          ARCH=aarch64 ./build-aux/make-appimage.sh
+          ls -l ./build/*.AppImage
+      - name: Attach to the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: v${{ inputs.version }}
+        run: |
+          set -euo pipefail
+          echo "$GITHUB_TOKEN" >> "$RUNNER_TEMP/token" && gh auth login --with-token < "$RUNNER_TEMP/token"
+          gh release upload "$TAG" ./build/*aarch64*.AppImage --repo "$GITHUB_REPOSITORY" --clobber
