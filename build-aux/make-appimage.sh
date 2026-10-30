@@ -69,7 +69,7 @@ glibc_dirs="/lib64 /usr/lib64 /lib /usr/lib /lib/${arch}-linux-gnu /usr/lib/${ar
 
 loader_ok=""
 for d in $glibc_dirs; do
-    for loader in "ld-linux-${arch}.so.2" "ld-linux-x86-64.so.2" "ld-linux-aarch64.so.2"; do
+    for loader in "ld-linux-${arch}.so.1" "ld-linux-${arch}.so.2" "ld-linux-x86-64.so.2" "ld-linux-aarch64.so.1"; do
         if cp -Ln "$d/$loader" "$appdir/usr/lib/ld-linux" 2>/dev/null; then
             loader_ok=1
             break 2
