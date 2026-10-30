@@ -7,7 +7,7 @@
 <p align="center">Roblox bootstrapper that runs the macOS builds of Roblox on Linux through <a href="https://github.com/microlift/rosemary">Rosemary</a>.</p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/version-0.1.2-b23a48?style=flat-square" alt="version">
+  <img src="https://img.shields.io/badge/version-0.1.3-b23a48?style=flat-square" alt="version">
   <img src="https://img.shields.io/badge/license-GPL--3.0--or--later-6c7a57?style=flat-square" alt="license">
   <a href="https://discord.gg/HrUrzXAxPV">
     <img src="https://img.shields.io/badge/discord-server-5865f2?style=flat-square&logo=discord&logoColor=white" alt="discord server">
@@ -43,7 +43,7 @@ curl -fsSL https://buwryy.net/api/roseline/setup-script | bash
 ... or non-interactively:
 
 ```sh
-curl -fsSL https://buwryy.net/api/roseline/setup-script | bash -s -- --system --version v0.1.2 --yes
+curl -fsSL https://buwryy.net/api/roseline/setup-script | bash -s -- --system --version v0.1.3 --yes
 curl -fsSL https://buwryy.net/api/roseline/setup-script | bash -s -- --flatpak --latest --yes
 ```
 
