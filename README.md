@@ -141,6 +141,15 @@ Rosemary and Butter by MicroliftHQ, which is what shaped Roséline
 
 Bloxstrap, for the old avatar editor background
 
+## Star history
+
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/svg?repos=buwryme/Roseline&type=Date&theme=dark">
+    <img alt="Star History" src="https://api.star-history.com/svg?repos=buwryme/Roseline&type=Date&theme=light">
+  </picture>
+</p>
+
 ## License
 
 Licensed GPL-3.0-or-later, with additional terms:
