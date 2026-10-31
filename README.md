@@ -7,13 +7,41 @@
 <p align="center">Roblox bootstrapper that runs the macOS builds of Roblox on Linux through <a href="https://github.com/microlift/rosemary">Rosemary</a>.</p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/version-0.1.3-b23a48?style=flat-square" alt="version">
-  <img src="https://img.shields.io/badge/license-GPL--3.0--or--later-6c7a57?style=flat-square" alt="license">
+  <a href="https://github.com/buwryme/Roseline/blob/main/VERSION">
+    <picture>
+      <source media="(prefers-color-scheme: dark)" srcset="https://shieldcn.dev/badge/version-v0.1.3.svg?variant=secondary&size=sm&mode=dark&logo=git">
+      <img alt="Version" src="https://shieldcn.dev/badge/version-v0.1.3.svg?variant=secondary&size=sm&mode=light&logo=git">
+    </picture>
+  </a>
+  <a href="https://github.com/buwryme/Roseline/releases/latest">
+    <picture>
+      <source media="(prefers-color-scheme: dark)" srcset="https://shieldcn.dev/github/release/buwryme/Roseline.svg?variant=secondary&size=sm&mode=dark">
+      <img alt="Release" src="https://shieldcn.dev/github/release/buwryme/Roseline.svg?variant=secondary&size=sm&mode=light">
+    </picture>
+  </a>
+  <a href="https://github.com/buwryme/Roseline#License">
+    <picture>
+      <source media="(prefers-color-scheme: dark)" srcset="https://shieldcn.dev/badge/license-GPL--3.0--or--later.svg?variant=secondary&size=sm&mode=dark&logo=lu:scale">
+      <img alt="License: GPL-3.0-or-later" src="https://shieldcn.dev/badge/license-GPL--3.0--or--later.svg?variant=secondary&size=sm&mode=light&logo=lu:scale&nocache=1">
+    </picture>
+  </a>
   <a href="https://discord.gg/HrUrzXAxPV">
-    <img src="https://img.shields.io/badge/discord-server-5865f2?style=flat-square&logo=discord&logoColor=white" alt="discord server">
+    <picture>
+      <source media="(prefers-color-scheme: dark)" srcset="https://shieldcn.dev/discord/members/HrUrzXAxPV.svg?variant=secondary&size=sm&mode=dark">
+      <img alt="Discord Members" src="https://shieldcn.dev/discord/members/HrUrzXAxPV.svg?variant=secondary&size=sm&mode=light">
+    </picture>
   </a>
   <a href="https://github.com/buwryme/Roseline/actions/workflows/ci.yml">
-    <img src="https://github.com/buwryme/Roseline/actions/workflows/ci.yml/badge.svg?branch=main" alt="CI">
+    <picture>
+      <source media="(prefers-color-scheme: dark)" srcset="https://shieldcn.dev/github/ci/buwryme/Roseline.svg?variant=secondary&size=sm&mode=dark&workflow=ci.yml">
+      <img alt="CI" src="https://shieldcn.dev/github/ci/buwryme/Roseline.svg?variant=secondary&size=sm&mode=light&workflow=ci.yml&nocache=1">
+    </picture>
+  </a>
+  <a href="https://github.com/buwryme/Roseline/stargazers">
+    <picture>
+      <source media="(prefers-color-scheme: dark)" srcset="https://shieldcn.dev/github/stars/buwryme/Roseline.svg?variant=secondary&size=sm&mode=dark">
+      <img alt="GitHub Stars" src="https://shieldcn.dev/github/stars/buwryme/Roseline.svg?variant=secondary&size=sm&mode=light">
+    </picture>
   </a>
 </p>
 
@@ -103,7 +131,6 @@ make install PREFIX=~/.local
 
 ## Note:
 
-- Games using video playback will crash the game
 - Vulkan graphics might be slower than OpenGL due to the Metal2Vulkan translation layer
 - Running Roblox on Rosemary is experimental and not as widely tested
 - ARM64 Flatpak builds are omitted due to muvm requiring no sandboxes
