@@ -150,12 +150,14 @@ impl Session {
         let length = file.metadata().ok()?.len();
         if length < self.offset {
             self.offset = 0;
+            self.partial.clear();
         }
         file.seek(SeekFrom::Start(self.offset)).ok()?;
-        let mut text = String::new();
-        file.read_to_string(&mut text).ok()?;
-        self.offset += text.len() as u64;
-        Some(text)
+        // one stray byte must not stall the tail: read bytes, not a string.
+        let mut bytes = Vec::new();
+        file.read_to_end(&mut bytes).ok()?;
+        self.offset += bytes.len() as u64;
+        Some(String::from_utf8_lossy(&bytes).into_owned())
     }
 }
 
@@ -305,6 +307,31 @@ mod tests {
         drop(file);
         let events = session.tick();
         assert!(events.iter().any(|event| matches!(event, Event::Returned)));
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn invalid_bytes_do_not_stall_the_log() {
+        let root = std::env::temp_dir().join(format!("roseline-bytes-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        std::fs::create_dir_all(&root).unwrap();
+        let log = root.join("player.log");
+        let mut text =
+            b"2026-10-18T13:49:30.000Z,1.0,abc,6 [FLog::Output] name \xff\xfe\n".to_vec();
+        text.extend_from_slice(
+            b"\
+2026-10-18T13:49:33.349Z,1.2,abc,6 [FLog::Output] ! Joining game 'e42cc7b0-9b0a-4b7e-8f35-1c2d3e4f5a6b' place 2753915549 at 128.116.44.3
+2026-10-18T13:49:33.351Z,1.2,abc,6 [FLog::Network] Replicator created: 0x1
+",
+        );
+        std::fs::write(&log, text).unwrap();
+        let mut session = Session::new(log);
+
+        let events = session.tick();
+
+        assert!(events.iter().any(
+            |event| matches!(event, Event::Joining(joining) if joining.place_id == 2753915549)
+        ));
         let _ = std::fs::remove_dir_all(&root);
     }
 
