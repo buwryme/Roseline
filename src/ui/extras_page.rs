@@ -160,6 +160,24 @@ pub fn build() -> adw::PreferencesPage {
         }
     ));
     player.add(&close);
+
+    let gamemode = adw::SwitchRow::builder()
+        .title("GameMode")
+        .subtitle(
+            "Asks Feral's GameMode to tune the system while Roblox runs. Needs GameMode installed.",
+        )
+        .active(settings.borrow().behavior.gamemode)
+        .build();
+    gamemode.add_prefix(&row_prefix("power-profile-performance-symbolic"));
+    gamemode.connect_active_notify(glib::clone!(
+        #[strong]
+        settings,
+        move |row| {
+            settings.borrow_mut().behavior.gamemode = row.is_active();
+            let _ = settings.borrow().save();
+        }
+    ));
+    player.add(&gamemode);
     page.add(&player);
 
     let server = adw::PreferencesGroup::builder()
