@@ -54,16 +54,44 @@ pub(crate) fn installed_upload_at(version_file: &Path) -> Option<String> {
 
 /// bring the managed copy up to Roblox's latest; returns whether it downloaded.
 pub fn ensure(progress: &Progress) -> Result<bool> {
-    let paths = Paths::get();
-    remove_stray_app(&paths)?;
-    disable_updater(&paths)?;
-    let latest = latest()?;
+    ensure_with(progress, &Paths::get(), latest)
+}
+
+fn ensure_with(
+    progress: &Progress,
+    paths: &Paths,
+    fetch: fn() -> Result<ClientVersion>,
+) -> Result<bool> {
+    remove_stray_app(paths)?;
+    disable_updater(paths)?;
+    match fetch() {
+        Ok(latest) => bring_up_to_date(progress, paths, latest),
+        Err(error) => {
+            let installed = paths
+                .app_bundle()
+                .join("Contents/MacOS/RobloxPlayer")
+                .is_file()
+                && installed_upload_at(&paths.app_version()).is_some();
+            if installed {
+                eprintln!(
+                    "roseline: Roblox's version endpoint is unreachable: {error:#}; keeping the installed client"
+                );
+                Ok(false)
+            } else {
+                Err(error)
+            }
+        }
+    }
+}
+
+fn bring_up_to_date(progress: &Progress, paths: &Paths, latest: ClientVersion) -> Result<bool> {
+    let local = installed_upload_at(&paths.app_version());
     let bundle_ready = paths
         .app_bundle()
         .join("Contents/MacOS/RobloxPlayer")
         .is_file()
         && bundle_version(&paths.app_bundle()).as_deref() == Some(latest.version.as_str());
-    if installed_upload().as_deref() == Some(latest.upload.as_str()) && bundle_ready {
+    if local.as_deref() == Some(latest.upload.as_str()) && bundle_ready {
         return Ok(false);
     }
 
@@ -283,6 +311,55 @@ fn rewrite_identifier(text: &str, id: &str) -> Option<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn offline() -> Result<ClientVersion> {
+        Err(anyhow::anyhow!("the endpoint did not answer"))
+    }
+
+    fn quiet() -> Progress {
+        Progress::silent()
+    }
+
+    #[test]
+    fn an_unreachable_endpoint_keeps_the_installed_client() {
+        let root = std::env::temp_dir().join(format!("roseline-offline-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        let paths = Paths {
+            data: root.clone(),
+            config: root.clone(),
+            cache: root.clone(),
+        };
+        let player = paths.app_bundle().join("Contents/MacOS/RobloxPlayer");
+        std::fs::create_dir_all(player.parent().unwrap()).unwrap();
+        std::fs::write(&player, b"macho").unwrap();
+        std::fs::write(paths.app_version(), "version-abc123").unwrap();
+
+        let downloaded = ensure_with(&quiet(), &paths, offline).unwrap();
+
+        assert!(!downloaded);
+        assert!(player.is_file());
+        assert_eq!(
+            std::fs::read_to_string(paths.app_version()).unwrap(),
+            "version-abc123"
+        );
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn an_unreachable_endpoint_without_a_client_fails() {
+        let root = std::env::temp_dir().join(format!("roseline-offline-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        let paths = Paths {
+            data: root.clone(),
+            config: root.clone(),
+            cache: root.clone(),
+        };
+
+        let error = ensure_with(&quiet(), &paths, offline).unwrap_err();
+
+        assert!(error.to_string().contains("did not answer"));
+        let _ = std::fs::remove_dir_all(&root);
+    }
 
     #[test]
     fn the_client_updater_and_its_payload_are_removed() {
