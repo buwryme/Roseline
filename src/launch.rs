@@ -52,6 +52,19 @@ pub fn run(
     }
     prepare_bottle(progress, &settings)?;
 
+    let outcome = start_client(progress, &settings, uri);
+    if outcome.is_err() {
+        crate::cookies::seal();
+    }
+    outcome
+}
+
+fn start_client(
+    progress: &Progress,
+    settings: &Settings,
+    uri: Option<&str>,
+) -> Result<(Child, async_channel::Receiver<crate::session::Event>)> {
+    let paths = Paths::get();
     progress.stage("Starting Roblox");
     let (_, binary) = paths
         .runner_selected(settings.runner.as_deref())
@@ -208,6 +221,14 @@ fn prepare_bottle(progress: &Progress, settings: &Settings) -> Result<()> {
     ensure_prefix(progress, settings)?;
     crate::roblox::ensure(progress)?;
     crate::cookies::prepare();
+    let outcome = mod_client(progress, settings);
+    if outcome.is_err() {
+        crate::cookies::seal();
+    }
+    outcome
+}
+
+fn mod_client(progress: &Progress, settings: &Settings) -> Result<()> {
     crate::roblox::brand()?;
     crate::overlay::apply(progress)?;
     crate::fonts::apply(settings)?;

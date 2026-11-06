@@ -772,6 +772,24 @@ mod tests {
     }
 
     #[test]
+    fn a_failed_launch_leaves_the_jar_after_a_reseal() {
+        let paths = temp_paths("reseal");
+        let files = files(&paths);
+        let store = Memory::default();
+        *store.value.borrow_mut() = Some(JAR.to_string());
+
+        prepare_with(&store, &paths).unwrap();
+        assert!(files.branded.exists());
+
+        seal_with(&store, &paths).unwrap();
+
+        assert_eq!(store.value.borrow().as_deref(), Some(JAR));
+        assert!(!files.branded.exists());
+        assert!(!temp_path(&files.branded).exists());
+        let _ = std::fs::remove_dir_all(&paths.data);
+    }
+
+    #[test]
     fn sealing_stores_the_jar_and_removes_both_names() {
         let paths = temp_paths("seal");
         let files = files(&paths);
