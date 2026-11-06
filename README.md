@@ -9,38 +9,38 @@
 <p align="center">
   <a href="https://github.com/buwryme/Roseline/blob/main/VERSION">
     <picture>
-      <source media="(prefers-color-scheme: dark)" srcset="https://shieldcn.dev/badge/version-v0.1.4.svg?variant=secondary&size=sm&mode=dark&logo=git">
-      <img alt="Version" src="https://shieldcn.dev/badge/version-v0.1.4.svg?variant=secondary&size=sm&mode=light&logo=git">
+      <source media="(prefers-color-scheme: dark)" srcset="https://shieldcn.dev/badge/version-v0.1.4.svg?variant=secondary&size=sm&mode=dark&logo=git&nocache=1">
+      <img alt="Version" src="https://shieldcn.dev/badge/version-v0.1.4.svg?variant=secondary&size=sm&mode=light&logo=git&nocache=1">
     </picture>
   </a>
   <a href="https://github.com/buwryme/Roseline/releases/latest">
     <picture>
-      <source media="(prefers-color-scheme: dark)" srcset="https://shieldcn.dev/github/release/buwryme/Roseline.svg?variant=secondary&size=sm&mode=dark">
-      <img alt="Release" src="https://shieldcn.dev/github/release/buwryme/Roseline.svg?variant=secondary&size=sm&mode=light">
+      <source media="(prefers-color-scheme: dark)" srcset="https://shieldcn.dev/github/release/buwryme/Roseline.svg?variant=secondary&size=sm&mode=dark&nocache=1">
+      <img alt="Release" src="https://shieldcn.dev/github/release/buwryme/Roseline.svg?variant=secondary&size=sm&mode=light&nocache=1">
     </picture>
   </a>
   <a href="https://github.com/buwryme/Roseline#License">
     <picture>
-      <source media="(prefers-color-scheme: dark)" srcset="https://shieldcn.dev/badge/license-GPL--3.0--or--later.svg?variant=secondary&size=sm&mode=dark&logo=lu:scale">
+      <source media="(prefers-color-scheme: dark)" srcset="https://shieldcn.dev/badge/license-GPL--3.0--or--later.svg?variant=secondary&size=sm&mode=dark&logo=lu:scale&nocache=1">
       <img alt="License: GPL-3.0-or-later" src="https://shieldcn.dev/badge/license-GPL--3.0--or--later.svg?variant=secondary&size=sm&mode=light&logo=lu:scale&nocache=1">
     </picture>
   </a>
   <a href="https://discord.gg/HrUrzXAxPV">
     <picture>
-      <source media="(prefers-color-scheme: dark)" srcset="https://shieldcn.dev/discord/members/HrUrzXAxPV.svg?variant=secondary&size=sm&mode=dark">
-      <img alt="Discord Members" src="https://shieldcn.dev/discord/members/HrUrzXAxPV.svg?variant=secondary&size=sm&mode=light">
+      <source media="(prefers-color-scheme: dark)" srcset="https://shieldcn.dev/discord/members/HrUrzXAxPV.svg?variant=secondary&size=sm&mode=dark&nocache=1">
+      <img alt="Discord Members" src="https://shieldcn.dev/discord/members/HrUrzXAxPV.svg?variant=secondary&size=sm&mode=light&nocache=1">
     </picture>
   </a>
   <a href="https://github.com/buwryme/Roseline/actions/workflows/ci.yml">
     <picture>
-      <source media="(prefers-color-scheme: dark)" srcset="https://shieldcn.dev/github/ci/buwryme/Roseline.svg?variant=secondary&size=sm&mode=dark&workflow=ci.yml">
+      <source media="(prefers-color-scheme: dark)" srcset="https://shieldcn.dev/github/ci/buwryme/Roseline.svg?variant=secondary&size=sm&mode=dark&workflow=ci.yml&nocache=1">
       <img alt="CI" src="https://shieldcn.dev/github/ci/buwryme/Roseline.svg?variant=secondary&size=sm&mode=light&workflow=ci.yml&nocache=1">
     </picture>
   </a>
   <a href="https://github.com/buwryme/Roseline/stargazers">
     <picture>
-      <source media="(prefers-color-scheme: dark)" srcset="https://shieldcn.dev/github/stars/buwryme/Roseline.svg?variant=secondary&size=sm&mode=dark">
-      <img alt="GitHub Stars" src="https://shieldcn.dev/github/stars/buwryme/Roseline.svg?variant=secondary&size=sm&mode=light">
+      <source media="(prefers-color-scheme: dark)" srcset="https://shieldcn.dev/github/stars/buwryme/Roseline.svg?variant=secondary&size=sm&mode=dark&nocache=1">
+      <img alt="GitHub Stars" src="https://shieldcn.dev/github/stars/buwryme/Roseline.svg?variant=secondary&size=sm&mode=light&nocache=1">
     </picture>
   </a>
 </p>
@@ -123,6 +123,7 @@ make install PREFIX=~/.local
 - Close Roblox when leaving game, removing homescreen
 - Edit FastFlags
 - ARM64 support (thanks to starraep!)
+- Feral GameMode toggle
 
 ## Security
 
@@ -145,8 +146,8 @@ Bloxstrap, for the old avatar editor background
 
 <p align="center">
   <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/svg?repos=buwryme/Roseline&type=Date&theme=dark">
-    <img alt="Star History" src="https://api.star-history.com/svg?repos=buwryme/Roseline&type=Date&theme=light">
+    <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/svg?repos=buwryme/Roseline&type=Date&theme=dark&nocache=1">
+    <img alt="Star History" src="https://api.star-history.com/svg?repos=buwryme/Roseline&type=Date&theme=light&nocache=1">
   </picture>
 </p>
 
