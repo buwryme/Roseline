@@ -322,7 +322,8 @@ mod tests {
 
     #[test]
     fn an_unreachable_endpoint_keeps_the_installed_client() {
-        let root = std::env::temp_dir().join(format!("roseline-offline-{}", std::process::id()));
+        let root =
+            std::env::temp_dir().join(format!("roseline-offline-kept-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&root);
         let paths = Paths {
             data: root.clone(),
@@ -347,7 +348,8 @@ mod tests {
 
     #[test]
     fn an_unreachable_endpoint_without_a_client_fails() {
-        let root = std::env::temp_dir().join(format!("roseline-offline-{}", std::process::id()));
+        let root =
+            std::env::temp_dir().join(format!("roseline-offline-alone-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&root);
         let paths = Paths {
             data: root.clone(),
