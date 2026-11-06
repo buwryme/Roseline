@@ -208,6 +208,8 @@ pub struct ServerLocation {
 #[serde(default)]
 pub struct Behavior {
     pub close_on_leave: bool,
+    /// Feral's GameMode for as long as the game runs.
+    pub gamemode: bool,
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
@@ -341,6 +343,16 @@ mod tests {
         assert!(settings.behavior.close_on_leave);
         let restored: Settings = toml::from_str(&settings.render().unwrap()).unwrap();
         assert!(restored.behavior.close_on_leave);
+    }
+
+    #[test]
+    fn gamemode_is_off_by_default_and_round_trips() {
+        let defaults: Settings = toml::from_str("").unwrap();
+        assert!(!defaults.behavior.gamemode);
+        let settings: Settings = toml::from_str("[behavior]\ngamemode = true\n").unwrap();
+        assert!(settings.behavior.gamemode);
+        let restored: Settings = toml::from_str(&settings.render().unwrap()).unwrap();
+        assert!(restored.behavior.gamemode);
     }
 
     #[test]

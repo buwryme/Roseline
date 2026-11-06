@@ -106,6 +106,11 @@ pub fn run(
     if settings.server_location.enabled {
         spawn_toast_helper(&log_path, child.id());
     }
+    if settings.behavior.gamemode
+        && let Err(error) = crate::gamemode::register(child.id())
+    {
+        eprintln!("roseline: could not start GameMode: {error:#}");
+    }
 
     // the child writes its guest log to this launch's file; tail that exact
     // file, so a stale log from another instance can never be mistaken for it.

@@ -7,6 +7,7 @@ mod cookies;
 mod flags;
 mod fonts;
 mod gameinfo;
+mod gamemode;
 mod github;
 mod gpu;
 mod icons;

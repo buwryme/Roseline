@@ -317,6 +317,24 @@ fn player_group(settings: &Rc<RefCell<Settings>>) -> adw::PreferencesGroup {
     ));
     group.add(&close);
 
+    let gamemode = adw::SwitchRow::builder()
+        .title("GameMode")
+        .subtitle(
+            "Asks Feral's GameMode to tune the system while Roblox runs. Needs GameMode installed.",
+        )
+        .active(settings.borrow().behavior.gamemode)
+        .build();
+    gamemode.add_prefix(&row_prefix("power-profile-performance-symbolic"));
+    gamemode.connect_active_notify(glib::clone!(
+        #[strong]
+        settings,
+        move |row| {
+            settings.borrow_mut().behavior.gamemode = row.is_active();
+            let _ = settings.borrow().save();
+        }
+    ));
+    group.add(&gamemode);
+
     let old = adw::SwitchRow::builder()
         .title("Old avatar editor background")
         .subtitle("Swaps the avatar editor background with the classic one.")

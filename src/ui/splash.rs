@@ -649,8 +649,11 @@ impl Splash {
             inner.target = 0;
             (pid, joined, early, hold)
         };
-        if pid.is_some() {
+        if let Some(pid) = pid {
             let _ = std::fs::remove_file(crate::config::Paths::get().game_pid());
+            if Settings::load().behavior.gamemode {
+                let _ = crate::gamemode::unregister(pid);
+            }
         }
         self.window.destroy();
         SPLASH.with(|slot| *slot.borrow_mut() = None);
