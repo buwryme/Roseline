@@ -11,6 +11,8 @@ use gtk::{gio, glib};
 use super::{content_page, extras_page, flags_page, graphics_page, runner_page, settings_page};
 use crate::config::{self, DISPLAY_NAME};
 
+const CONFIG_ERROR_BODY: &str = "Your config has errors inside it. Maybe you edited it manually?\n\nYou can try to repair it manually, or delete it so Roséline recreates a fresh one.";
+
 thread_local! {
     static WINDOW: RefCell<Option<glib::WeakRef<adw::ApplicationWindow>>> = const { RefCell::new(None) };
     static NAV: RefCell<Option<glib::WeakRef<adw::NavigationView>>> = const { RefCell::new(None) };
@@ -27,6 +29,30 @@ pub fn present(app: &adw::Application) {
     let window = build(app);
     WINDOW.with(|slot| *slot.borrow_mut() = Some(window.downgrade()));
     window.present();
+}
+
+pub fn config_error_dialog() {
+    let Some(path) = crate::settings::Settings::config_error_file() else {
+        return;
+    };
+    let dialog = adw::AlertDialog::builder()
+        .heading("Config Error")
+        .body(CONFIG_ERROR_BODY)
+        .build();
+    dialog.add_response("open", "Open Config");
+    dialog.add_response("ok", "OK");
+    dialog.set_response_appearance("ok", adw::ResponseAppearance::Destructive);
+    dialog.connect_response(Some("open"), move |_, _| {
+        if let Err(error) = std::process::Command::new("xdg-open").arg(&path).spawn() {
+            eprintln!("roseline: could not open the config file: {error}");
+        }
+    });
+    if let Some(app) = gtk::gio::Application::default() {
+        unsafe {
+            dialog.set_data("roseline-hold", app.hold());
+        }
+    }
+    dialog.present(None::<&gtk::Window>);
 }
 
 /// show the window; slide a page in when one is named.

@@ -52,6 +52,7 @@ fn main() -> glib::ExitCode {
         .build();
 
     app.connect_startup(|app| {
+        ui::window::config_error_dialog();
         icons::init();
         gtk::Window::set_default_icon_name(config::APP_ID);
         let about = gio::ActionEntry::builder("about")
@@ -97,6 +98,9 @@ fn main() -> glib::ExitCode {
                 _ if looks_like_link(&argument) => uri = Some(argument),
                 _ => {}
             }
+        }
+        if crate::settings::Settings::config_error_file().is_some() {
+            return glib::ExitCode::SUCCESS;
         }
         if wants_settings {
             ui::window::request_settings(app, settings_page.as_deref());

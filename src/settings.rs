@@ -9,6 +9,10 @@ use serde::{Deserialize, Serialize};
 
 use crate::config::Paths;
 
+use anyhow::{Result, bail};
+
+static CONFIG_UNREADABLE: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(default)]
 pub struct Settings {
@@ -260,10 +264,8 @@ impl Settings {
     pub fn load() -> Settings {
         let path = Paths::get().settings_file();
         let existed = path.is_file();
-        let mut settings: Settings = std::fs::read_to_string(&path)
-            .ok()
-            .and_then(|text| toml::from_str(&text).ok())
-            .unwrap_or_default();
+        let (mut settings, broken) = load_at(&path);
+        CONFIG_UNREADABLE.store(broken, std::sync::atomic::Ordering::Relaxed);
         // an empty id from an older version takes the shipped default.
         if settings.discord.app_id.trim().is_empty() {
             settings.discord.app_id = DEFAULT_APP_ID.to_string();
@@ -275,7 +277,16 @@ impl Settings {
         settings
     }
 
+    pub fn config_error_file() -> Option<PathBuf> {
+        config_error_at(&Paths::get().settings_file())
+    }
+
     pub fn save(&self) -> anyhow::Result<()> {
+        if CONFIG_UNREADABLE.load(std::sync::atomic::Ordering::Relaxed) {
+            bail!(
+                "the config file has errors; copying the built-in template over it would discard what you wrote"
+            );
+        }
         let path = Paths::get().settings_file();
         crate::util::write_atomic(&path, self.render()?.as_bytes())
     }
@@ -287,9 +298,84 @@ impl Settings {
     }
 }
 
+fn config_error_at(path: &std::path::Path) -> Option<PathBuf> {
+    let Ok(text) = std::fs::read_to_string(path) else {
+        return None;
+    };
+    (!toml::from_str::<Settings>(&text).is_ok()).then(|| path.to_path_buf())
+}
+
+fn load_at(path: &std::path::Path) -> (Settings, bool) {
+    match std::fs::read_to_string(path) {
+        Ok(text) => match toml::from_str(&text) {
+            Ok(parsed) => (parsed, false),
+            Err(_) => (Settings::default(), true),
+        },
+        Err(_) => (Settings::default(), false),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_hurt_file_keeps_its_content_until_repaired() {
+        let root = std::env::temp_dir().join(format!("roseline-config-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        std::fs::create_dir_all(&root).unwrap();
+        let hurt = root.join("hurt.toml");
+        std::fs::write(&hurt, "[behavior\ngamemode = true\n").unwrap();
+
+        let (settings, broken) = load_at(&hurt);
+
+        assert!(broken);
+        assert!(!settings.behavior.gamemode);
+        assert_eq!(
+            std::fs::read_to_string(&hurt).unwrap(),
+            "[behavior\ngamemode = true\n"
+        );
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn saves_are_refused_while_the_config_is_unreadable() {
+        std::sync::atomic::AtomicBool::store(
+            &CONFIG_UNREADABLE,
+            true,
+            std::sync::atomic::Ordering::Relaxed,
+        );
+
+        let refused = Settings::default().save();
+
+        std::sync::atomic::AtomicBool::store(
+            &CONFIG_UNREADABLE,
+            false,
+            std::sync::atomic::Ordering::Relaxed,
+        );
+        assert!(
+            refused
+                .unwrap_err()
+                .to_string()
+                .contains("the config file has errors")
+        );
+    }
+
+    #[test]
+    fn only_a_hurt_file_counts_as_a_config_error() {
+        let root = std::env::temp_dir().join(format!("roseline-config-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        std::fs::create_dir_all(&root).unwrap();
+        let good = root.join("good.toml");
+        let hurt = root.join("hurt.toml");
+        std::fs::write(&good, "[behavior]\ngamemode = true\n").unwrap();
+        std::fs::write(&hurt, "[behavior\ngamemode = true\n").unwrap();
+
+        assert!(config_error_at(&good).is_none());
+        assert!(config_error_at(&hurt).is_some());
+        assert!(config_error_at(&root.join("gone.toml")).is_none());
+        let _ = std::fs::remove_dir_all(&root);
+    }
 
     #[test]
     fn missing_keys_take_defaults() {
