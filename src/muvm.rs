@@ -98,18 +98,7 @@ fn check_support(arch: &str, host: &str, enabled: bool, sandboxed: bool) -> Resu
 
 /// whether `muvm` is on the PATH.
 pub fn available() -> bool {
-    find("muvm").is_some()
-}
-
-fn find(name: &str) -> Option<PathBuf> {
-    use std::os::unix::fs::PermissionsExt;
-    std::env::split_paths(&std::env::var_os("PATH")?)
-        .map(|dir| dir.join(name))
-        .find(|candidate| {
-            candidate
-                .metadata()
-                .is_ok_and(|meta| meta.is_file() && meta.permissions().mode() & 0o111 != 0)
-        })
+    crate::util::on_path("muvm").is_some()
 }
 
 /// whether a muvm VM is already up. A second `muvm` joins it and returns at

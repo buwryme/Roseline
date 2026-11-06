@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 use std::io::Write;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::process::{Command, ExitStatus};
 
 /// write through a temp file in the same directory, so a crash cannot leave
@@ -38,4 +38,16 @@ pub fn format_size(bytes: u64) -> String {
         }
     }
     format!("{bytes} B")
+}
+
+/// a named executable on the PATH, wherever the distro happened to install it.
+pub fn on_path(name: &str) -> Option<PathBuf> {
+    use std::os::unix::fs::PermissionsExt;
+    std::env::split_paths(&std::env::var_os("PATH")?)
+        .map(|dir| dir.join(name))
+        .find(|candidate| {
+            candidate
+                .metadata()
+                .is_ok_and(|meta| meta.is_file() && meta.permissions().mode() & 0o111 != 0)
+        })
 }

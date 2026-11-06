@@ -169,14 +169,20 @@ pub fn build() -> adw::PreferencesPage {
         .active(settings.borrow().behavior.gamemode)
         .build();
     gamemode.add_prefix(&row_prefix("power-profile-performance-symbolic"));
-    gamemode.connect_active_notify(glib::clone!(
-        #[strong]
-        settings,
-        move |row| {
-            settings.borrow_mut().behavior.gamemode = row.is_active();
-            let _ = settings.borrow().save();
-        }
-    ));
+    if crate::gamemode::installed() {
+        gamemode.connect_active_notify(glib::clone!(
+            #[strong]
+            settings,
+            move |row| {
+                settings.borrow_mut().behavior.gamemode = row.is_active();
+                let _ = settings.borrow().save();
+            }
+        ));
+    } else {
+        gamemode.set_active(false);
+        gamemode.set_sensitive(false);
+        gamemode.set_tooltip_text(Some("Gamemode is not installed on your system."));
+    }
     player.add(&gamemode);
     page.add(&player);
 
