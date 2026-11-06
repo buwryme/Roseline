@@ -231,9 +231,10 @@ pub fn wait_for_group(pid: u32, timeout: std::time::Duration) {
 
 /// take a wedged guest out without asking.
 pub fn force_kill(pid: u32) {
-    // SAFETY: a plain signal to a pid this process spawned.
+    // SAFETY: a plain signal to the group this process spawned; the guest's
+    // children go with it.
     unsafe {
-        libc::kill(pid as i32, libc::SIGKILL);
+        libc::kill(-(pid as i32), libc::SIGKILL);
     }
 }
 
@@ -585,6 +586,24 @@ mod tests {
         assert!(started.elapsed() >= std::time::Duration::from_millis(500));
         assert!(started.elapsed() < std::time::Duration::from_secs(2));
         reaper.join().unwrap();
+    }
+
+    #[test]
+    fn force_kill_takes_the_whole_group() {
+        use std::os::unix::process::CommandExt;
+
+        let mut command = std::process::Command::new("sh");
+        command.args(["-c", "sleep 30 & wait"]).process_group(0);
+        let mut child = command.spawn().unwrap();
+        let pid = child.id();
+        std::thread::sleep(std::time::Duration::from_millis(200));
+        let started = std::time::Instant::now();
+
+        force_kill(pid);
+        let _ = child.wait();
+        wait_for_group(pid, std::time::Duration::from_secs(3));
+
+        assert!(started.elapsed() < std::time::Duration::from_secs(2));
     }
 
     #[test]

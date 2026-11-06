@@ -76,6 +76,10 @@ fn keepable(backup: &Path, version: &str, current: &[u8]) -> bool {
 fn restore(paths: &Paths, target: &Path) -> Result<()> {
     let backup = paths.avatar_background();
     let original = backup.join(ROOT);
+    // never enabled, or already restored: the client file is the stock one.
+    if !original.is_file() {
+        return Ok(());
+    }
     let bytes = fs::read(&original).with_context(|| format!("reading {}", original.display()))?;
     crate::util::write_atomic(target, &bytes)
         .with_context(|| format!("restoring {}", target.display()))?;
@@ -179,6 +183,20 @@ mod tests {
 
         assert_eq!(fs::read(&target).unwrap(), b"stock");
         assert!(!paths.avatar_background().join(ROOT).exists());
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn staying_off_leaves_the_stock_file_alone() {
+        let (root, paths) = temp_paths("never");
+        let target = stock_file(&paths);
+        fs::write(&target, b"stock").unwrap();
+        let progress = Progress::silent();
+
+        apply_at(&paths, &Settings::default(), &progress).unwrap();
+
+        assert_eq!(fs::read(&target).unwrap(), b"stock");
+        assert!(!paths.avatar_background().exists());
         let _ = fs::remove_dir_all(root);
     }
 

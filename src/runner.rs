@@ -303,7 +303,7 @@ fn cached_id(paths: &Paths) -> Option<String> {
             return Some(id);
         }
     }
-    let (id, _) = installed_at(paths).last()?.clone();
+    let (id, _) = installed_at(paths).first()?.clone();
     Some(id)
 }
 
@@ -631,6 +631,18 @@ mod tests {
         let newer = paths.runners().join(id_for("v0.3.4"));
         std::fs::create_dir_all(newer.join("bin")).unwrap();
         std::fs::write(newer.join("bin/rosemary"), b"#!/bin/sh\n").unwrap();
+        assert_eq!(cached_id(&paths), Some(id_for("v0.3.4")));
+        let _ = std::fs::remove_dir_all(_root);
+    }
+
+    #[test]
+    fn a_down_api_without_a_cache_serves_the_newest_runner() {
+        let (_root, paths) = temp_paths("offline-newest");
+        for tag in ["v0.3.0", "v0.3.4", "v0.3.2"] {
+            let dir = paths.runners().join(id_for(tag));
+            std::fs::create_dir_all(dir.join("bin")).unwrap();
+            std::fs::write(dir.join("bin/rosemary"), b"#!/bin/sh\n").unwrap();
+        }
         assert_eq!(cached_id(&paths), Some(id_for("v0.3.4")));
         let _ = std::fs::remove_dir_all(_root);
     }
