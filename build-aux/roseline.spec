@@ -2,7 +2,7 @@
 %global debug_package %{nil}
 
 Name:           roseline
-Version:        0.1.3
+Version:        0.1.4
 Release:        1%{?dist}
 Summary:        Run Roblox with Rosemary on Linux
 

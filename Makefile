@@ -1,5 +1,5 @@
 PREFIX ?= /usr/local
-VERSION := 0.1.3
+VERSION := 0.1.4
 PKG_VERSION := $(subst -,.,$(VERSION))
 ARCH ?= $(shell uname -m)
 CARGO ?= cargo
