@@ -190,34 +190,19 @@ jobs:
             echo "notes=$notes"
           } >> "$GITHUB_OUTPUT"
 
-  arch:
-    name: Arch package (${{ matrix.arch }})
+  arch_x86_64:
+    name: Arch package (x86_64)
     needs: validate
     if: ${{ inputs.build_arch }}
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - arch: x86_64
-            runner: ubuntu-latest
-            image: archlinux:latest
-          # Arch Linux ARM publishes no official image
-          - arch: aarch64
-            runner: ubuntu-24.04-arm
-            image: menci/archlinuxarm:latest
-    runs-on: ${{ matrix.runner }}
+    runs-on: ubuntu-latest
     timeout-minutes: 90
     container:
-      # github's arm runners cannot apply pacman's landlock sandbox
-      image: ${{ matrix.image }}
+      image: archlinux:latest
       options: --privileged
     defaults:
       run:
         shell: bash
     steps:
-      - name: Initialise the Arch Linux ARM keyring
-        if: ${{ matrix.arch == 'aarch64' }}
-        run: pacman-key --init && pacman-key --populate archlinuxarm
       - name: Install git for checkout
         run: pacman -Syu --noconfirm --needed git
       - uses: actions/checkout@v7
@@ -225,7 +210,6 @@ jobs:
           ref: ${{ inputs.commit }}
           fetch-depth: 0
       - name: Build package
-        if: ${{ matrix.arch == 'x86_64' || inputs.build_arch_arm64 }}
         env:
           PKG_VERSION: ${{ needs.validate.outputs.package_version }}
         run: |
@@ -243,23 +227,58 @@ jobs:
           find "$PWD" -maxdepth 3 -name 'roseline-*.pkg.tar.zst' -print -exec mv -t build/ {} \;
           ls -l build/*.pkg.tar.zst
       - uses: actions/upload-artifact@v7
-        if: ${{ matrix.arch == 'x86_64' || inputs.build_arch_arm64 }}
         with:
-          name: arch-${{ matrix.arch }}
-          path: build/roseline-${{ needs.validate.outputs.package_version }}-1-${{ matrix.arch }}.pkg.tar.zst
+          name: arch-x86_64
+          path: build/roseline-${{ needs.validate.outputs.package_version }}-1-x86_64.pkg.tar.zst
           if-no-files-found: error
 
-  rpm:
-    name: Fedora RPM (${{ matrix.arch }})
+  arch_aarch64:
+    name: Arch package (aarch64)
+    needs: validate
+    if: ${{ inputs.build_arch && inputs.build_arch_arm64 }}
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.commit }}
+          fetch-depth: 0
+      - name: Build package
+        env:
+          PKG_VERSION: ${{ needs.validate.outputs.package_version }}
+        run: |
+          set -euo pipefail
+          mkdir -p build
+          cat > build/ci-build.sh <<'SCRIPT'
+          set -euo pipefail
+          pacman-key --init
+          pacman-key --populate archlinuxarm
+          pacman --disable-sandbox -Syy --noconfirm
+          pacman --disable-sandbox -S --noconfirm --needed base-devel rust cargo gtk4 libadwaita libsecret glib2 pkgconf zstd git
+          cd /work
+          make dist VERSION="$PKG_VERSION"
+          cp build-aux/PKGBUILD build/PKGBUILD
+          sed -i "s/^pkgver=.*/pkgver=$PKG_VERSION/" build/PKGBUILD
+          useradd -m builder
+          cp /etc/makepkg.conf build/mk.conf
+          printf "PKGEXT='.pkg.tar.zst'\n" >> build/mk.conf
+          chown -R builder:builder /work/build
+          su builder -s /bin/bash -c "cd /work/build && MAKEPKG_CONF=/work/build/mk.conf makepkg --disable-sandbox --noconfirm --nocheck"
+          test -f "/work/build/roseline-$PKG_VERSION-1-aarch64.pkg.tar.zst"
+          ls -l /work/build/*.pkg.tar.zst
+          SCRIPT
+          ./build-aux/ci-chroot.sh aarch64 arch "bash /work/build/ci-build.sh"
+      - uses: actions/upload-artifact@v7
+        with:
+          name: arch-aarch64
+          path: build/roseline-${{ needs.validate.outputs.package_version }}-1-aarch64.pkg.tar.zst
+          if-no-files-found: error
+
+  rpm_x86_64:
+    name: Fedora RPM (x86_64)
     needs: validate
     if: ${{ inputs.build_rpm }}
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - { arch: x86_64, runner: ubuntu-latest }
-          - { arch: aarch64, runner: ubuntu-24.04-arm }
-    runs-on: ${{ matrix.runner }}
+    runs-on: ubuntu-latest
     timeout-minutes: 90
     container: fedora:latest
     defaults:
@@ -273,7 +292,6 @@ jobs:
           ref: ${{ inputs.commit }}
           fetch-depth: 0
       - name: Build package
-        if: ${{ matrix.arch == 'x86_64' || inputs.build_rpm_arm64 }}
         env:
           PKG_VERSION: ${{ needs.validate.outputs.package_version }}
         run: |
@@ -287,23 +305,52 @@ jobs:
           cp rpmbuild/RPMS/*/*.rpm build/
           ls -l build/*.rpm
       - uses: actions/upload-artifact@v7
-        if: ${{ matrix.arch == 'x86_64' || inputs.build_rpm_arm64 }}
         with:
-          name: rpm-${{ matrix.arch }}
+          name: rpm-x86_64
           path: build/*.rpm
           if-no-files-found: error
 
-  deb:
-    name: Debian package (${{ matrix.arch }})
+  rpm_aarch64:
+    name: Fedora RPM (aarch64)
+    needs: validate
+    if: ${{ inputs.build_rpm && inputs.build_rpm_arm64 }}
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.commit }}
+          fetch-depth: 0
+      - name: Build package
+        env:
+          PKG_VERSION: ${{ needs.validate.outputs.package_version }}
+        run: |
+          set -euo pipefail
+          mkdir -p build
+          cat > build/ci-build.sh <<'SCRIPT'
+          set -euo pipefail
+          dnf install -y --nodocs --setopt=install_weak_deps=False rpm-build make gcc cargo rust gtk4-devel libadwaita-devel libsecret-devel glib2-devel
+          cd /work
+          make dist VERSION="$PKG_VERSION"
+          mkdir -p rpmbuild/{BUILD,BUILDROOT,RPMS,SOURCES,SPECS,SRPMS}
+          cp "build/roseline-$PKG_VERSION.tar.gz" rpmbuild/SOURCES/
+          sed "s/^Version:.*/Version:        $PKG_VERSION/" build-aux/roseline.spec > rpmbuild/SPECS/roseline.spec
+          rpmbuild --define "_topdir /work/rpmbuild" -bb rpmbuild/SPECS/roseline.spec
+          cp rpmbuild/RPMS/*/*.rpm build/
+          ls -l build/*.rpm
+          SCRIPT
+          ./build-aux/ci-chroot.sh aarch64 fedora "bash /work/build/ci-build.sh"
+      - uses: actions/upload-artifact@v7
+        with:
+          name: rpm-aarch64
+          path: build/*.rpm
+          if-no-files-found: error
+
+  deb_x86_64:
+    name: Debian package (x86_64)
     needs: validate
     if: ${{ inputs.build_deb }}
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - { arch: x86_64, runner: ubuntu-latest }
-          - { arch: aarch64, runner: ubuntu-24.04-arm }
-    runs-on: ${{ matrix.runner }}
+    runs-on: ubuntu-latest
     timeout-minutes: 90
     container: ubuntu:24.04
     defaults:
@@ -317,7 +364,6 @@ jobs:
           ref: ${{ inputs.commit }}
           fetch-depth: 0
       - name: Build package
-        if: ${{ matrix.arch == 'x86_64' || inputs.build_deb_arm64 }}
         run: |
           set -euo pipefail
           apt-get install -y build-essential pkg-config libgtk-4-dev libadwaita-1-dev libsecret-1-dev libglib2.0-dev curl
@@ -327,9 +373,42 @@ jobs:
           ./build-aux/make-deb.sh
           ls -l build/*.deb
       - uses: actions/upload-artifact@v7
-        if: ${{ matrix.arch == 'x86_64' || inputs.build_deb_arm64 }}
         with:
-          name: deb-${{ matrix.arch }}
+          name: deb-x86_64
+          path: build/*.deb
+          if-no-files-found: error
+
+  deb_aarch64:
+    name: Debian package (aarch64)
+    needs: validate
+    if: ${{ inputs.build_deb && inputs.build_deb_arm64 }}
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.commit }}
+          fetch-depth: 0
+      - name: Build package
+        run: |
+          set -euo pipefail
+          mkdir -p build
+          cat > build/ci-build.sh <<'SCRIPT'
+          set -euo pipefail
+          export DEBIAN_FRONTEND=noninteractive
+          apt-get update
+          apt-get install -y --no-install-recommends ca-certificates curl build-essential pkg-config libgtk-4-dev libadwaita-1-dev libsecret-1-dev libglib2.0-dev
+          curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --profile minimal
+          . "$HOME/.cargo/env"
+          cd /work
+          cargo build --release --locked
+          ./build-aux/make-deb.sh
+          ls -l build/*.deb
+          SCRIPT
+          ./build-aux/ci-chroot.sh aarch64 ubuntu "bash /work/build/ci-build.sh"
+      - uses: actions/upload-artifact@v7
+        with:
+          name: deb-aarch64
           path: build/*.deb
           if-no-files-found: error
 
@@ -459,8 +538,8 @@ jobs:
 
   release:
     name: Publish release
-    needs: [validate, arch, rpm, deb, appimage, flatpak, nix]
-    if: ${{ always() && needs.validate.result == 'success' && (needs.arch.result == 'success' || needs.arch.result == 'skipped') && (needs.rpm.result == 'success' || needs.rpm.result == 'skipped') && (needs.deb.result == 'success' || needs.deb.result == 'skipped') && (needs.appimage.result == 'success' || needs.appimage.result == 'skipped') && (needs.flatpak.result == 'success' || needs.flatpak.result == 'skipped') && (needs.nix.result == 'success' || needs.nix.result == 'skipped') }}
+    needs: [validate, arch_x86_64, arch_aarch64, rpm_x86_64, rpm_aarch64, deb_x86_64, deb_aarch64, appimage, flatpak, nix]
+    if: ${{ always() && needs.validate.result == 'success' && (needs.arch_x86_64.result == 'success' || needs.arch_x86_64.result == 'skipped') && (needs.arch_aarch64.result == 'success' || needs.arch_aarch64.result == 'skipped') && (needs.rpm_x86_64.result == 'success' || needs.rpm_x86_64.result == 'skipped') && (needs.rpm_aarch64.result == 'success' || needs.rpm_aarch64.result == 'skipped') && (needs.deb_x86_64.result == 'success' || needs.deb_x86_64.result == 'skipped') && (needs.deb_aarch64.result == 'success' || needs.deb_aarch64.result == 'skipped') && (needs.appimage.result == 'success' || needs.appimage.result == 'skipped') && (needs.flatpak.result == 'success' || needs.flatpak.result == 'skipped') && (needs.nix.result == 'success' || needs.nix.result == 'skipped') }}
     runs-on: ubuntu-latest
     timeout-minutes: 20
     permissions:
