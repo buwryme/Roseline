@@ -263,7 +263,7 @@ jobs:
           cp /etc/makepkg.conf build/mk.conf
           printf "PKGEXT='.pkg.tar.zst'\n" >> build/mk.conf
           chown -R builder:builder /work/build
-          su builder -s /bin/bash -c "cd /work/build && MAKEPKG_CONF=/work/build/mk.conf makepkg --disable-sandbox --noconfirm --nocheck"
+          su builder -s /bin/bash -c "cd /work/build && MAKEPKG_CONF=/work/build/mk.conf makepkg --noconfirm --nocheck"
           test -f "/work/build/roseline-$PKG_VERSION-1-aarch64.pkg.tar.zst"
           ls -l /work/build/*.pkg.tar.zst
           SCRIPT
