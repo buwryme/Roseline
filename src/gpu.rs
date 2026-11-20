@@ -5,7 +5,8 @@
 //! enumeration and variables come from Butter's `gpu.rs`
 //! (GPL-3.0-or-later, the Microlift contributors).
 
-use std::path::Path;
+use std::ffi::OsStr;
+use std::path::{Path, PathBuf};
 
 const NVIDIA: u16 = 0x10de;
 const AMD: u16 = 0x1002;
@@ -113,15 +114,104 @@ pub fn list() -> Vec<Gpu> {
 
 /// whether the loader sees any Vulkan driver; auto picks OpenGL when not.
 pub fn vulkan_available() -> bool {
-    [
-        "/usr/share/vulkan/icd.d",
-        "/run/host/usr/share/vulkan/icd.d",
-    ]
-    .iter()
-    .filter_map(|dir| std::fs::read_dir(dir).ok())
-    .flatten()
-    .flatten()
-    .any(|entry| entry.path().extension().is_some_and(|ext| ext == "json"))
+    !driver_manifests().is_empty()
+}
+
+fn driver_manifests() -> Vec<PathBuf> {
+    if let Some(list) = nonempty_env("VK_DRIVER_FILES") {
+        return icd_entries(&list);
+    }
+    if let Some(list) = nonempty_env("VK_ICD_FILENAMES") {
+        return icd_entries(&list);
+    }
+
+    let mut found = nonempty_env("VK_ADD_DRIVER_FILES")
+        .map(|list| icd_entries(&list))
+        .unwrap_or_default();
+    for dir in search_dirs() {
+        found.extend(manifests(&dir));
+    }
+    found
+}
+
+fn nonempty_env(name: &str) -> Option<std::ffi::OsString> {
+    std::env::var_os(name).filter(|value| !value.is_empty())
+}
+
+/// an explicit environment entry is a manifest or a folder holding manifests
+/// directly, unlike the XDG paths that get `vulkan/icd.d` appended.
+fn icd_entries(list: &OsStr) -> Vec<PathBuf> {
+    std::env::split_paths(list)
+        .flat_map(|path| match path.is_dir() {
+            true => manifests(&path),
+            false => path.is_file().then_some(path).into_iter().collect(),
+        })
+        .collect()
+}
+
+fn manifests(dir: &Path) -> Vec<PathBuf> {
+    let Ok(entries) = std::fs::read_dir(dir) else {
+        return Vec::new();
+    };
+    entries
+        .flatten()
+        .map(|entry| entry.path())
+        .filter(|path| path.extension().is_some_and(|ext| ext == "json") && path.is_file())
+        .collect()
+}
+
+/// the base directories the Linux loader turns into `vulkan/icd.d` paths,
+/// including the patches NixOS and Flatpak rely on.
+fn search_dirs() -> Vec<PathBuf> {
+    let home = std::env::var_os("HOME")
+        .filter(|value| !value.is_empty())
+        .map(PathBuf::from);
+    xdg_dirs(
+        home.as_deref(),
+        nonempty_env("XDG_CONFIG_HOME").as_deref(),
+        nonempty_env("XDG_CONFIG_DIRS").as_deref(),
+        nonempty_env("XDG_DATA_HOME").as_deref(),
+        nonempty_env("XDG_DATA_DIRS").as_deref(),
+    )
+    .into_iter()
+    .map(|dir| dir.join("vulkan/icd.d"))
+    .collect()
+}
+
+fn xdg_dirs(
+    home: Option<&Path>,
+    config_home: Option<&OsStr>,
+    config_dirs: Option<&OsStr>,
+    data_home: Option<&OsStr>,
+    data_dirs: Option<&OsStr>,
+) -> Vec<PathBuf> {
+    let mut dirs = Vec::new();
+    let config = config_home
+        .map(PathBuf::from)
+        .or_else(|| home.map(|home| home.join(".config")));
+    if let Some(config) = config {
+        dirs.push(config);
+    }
+    dirs.extend(split_dirs(config_dirs, "/etc/xdg"));
+    dirs.push(PathBuf::from("/etc"));
+    dirs.push(PathBuf::from("/usr/local/etc"));
+    let data = data_home
+        .map(PathBuf::from)
+        .or_else(|| home.map(|home| home.join(".local/share")));
+    if let Some(data) = data {
+        dirs.push(data);
+    }
+    dirs.extend(split_dirs(data_dirs, "/usr/local/share:/usr/share"));
+    dirs.push(PathBuf::from("/run/opengl-driver/share"));
+    dirs.push(PathBuf::from("/run/host/usr/share"));
+    dirs
+}
+
+fn split_dirs(value: Option<&OsStr>, fallback: &str) -> Vec<PathBuf> {
+    match value.filter(|value| !value.is_empty()) {
+        Some(value) => std::env::split_paths(value).collect(),
+        None => std::env::split_paths(OsStr::new(fallback)).collect(),
+    }
 }
 
 fn read(path: &Path) -> Option<String> {
@@ -246,6 +336,67 @@ mod tests {
             driver: driver.into(),
             name: String::new(),
         }
+    }
+
+    #[test]
+    fn xdg_search_paths_match_the_loader() {
+        let dirs = xdg_dirs(Some(Path::new("/home/me")), None, None, None, None);
+        assert_eq!(
+            dirs,
+            vec![
+                PathBuf::from("/home/me/.config"),
+                PathBuf::from("/etc/xdg"),
+                PathBuf::from("/etc"),
+                PathBuf::from("/usr/local/etc"),
+                PathBuf::from("/home/me/.local/share"),
+                PathBuf::from("/usr/local/share"),
+                PathBuf::from("/usr/share"),
+                PathBuf::from("/run/opengl-driver/share"),
+                PathBuf::from("/run/host/usr/share"),
+            ]
+        );
+
+        let dirs = xdg_dirs(
+            Some(Path::new("/home/me")),
+            Some(OsStr::new("/cfg")),
+            Some(OsStr::new("/a:/b")),
+            Some(OsStr::new("/data")),
+            Some(OsStr::new("/c:/d")),
+        );
+        assert_eq!(
+            dirs,
+            vec![
+                PathBuf::from("/cfg"),
+                PathBuf::from("/a"),
+                PathBuf::from("/b"),
+                PathBuf::from("/etc"),
+                PathBuf::from("/usr/local/etc"),
+                PathBuf::from("/data"),
+                PathBuf::from("/c"),
+                PathBuf::from("/d"),
+                PathBuf::from("/run/opengl-driver/share"),
+                PathBuf::from("/run/host/usr/share"),
+            ]
+        );
+    }
+
+    #[test]
+    fn explicit_driver_files_accept_files_and_folders() {
+        let root = std::env::temp_dir().join(format!("roseline-icd-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        let icd = root.join("icd.d");
+        std::fs::create_dir_all(&icd).unwrap();
+        std::fs::write(icd.join("radeon.json"), b"{}").unwrap();
+        std::fs::write(icd.join("ignored.txt"), b"{}").unwrap();
+        std::fs::write(root.join("intel.json"), b"{}").unwrap();
+
+        assert_eq!(icd_entries(icd.as_os_str()), vec![icd.join("radeon.json")]);
+        assert_eq!(
+            icd_entries(root.join("intel.json").as_os_str()),
+            vec![root.join("intel.json")]
+        );
+        assert!(icd_entries(root.join("missing.json").as_os_str()).is_empty());
+        let _ = std::fs::remove_dir_all(&root);
     }
 
     #[test]
