@@ -551,7 +551,7 @@ jobs:
           ref: ${{ inputs.commit }}
           fetch-depth: 0
       - uses: actions/download-artifact@v8
-        if: ${{ inputs.build_arch || inputs.build_rpm || inputs.build_deb || inputs.build_flatpak || inputs.build_appimage || inputs.build_nix }}
+        if: ${{ inputs.build_arch || inputs.build_arch_arm64 || inputs.build_rpm || inputs.build_rpm_arm64 || inputs.build_deb || inputs.build_deb_arm64 || inputs.build_flatpak || inputs.build_appimage || inputs.build_appimage_arm64 || inputs.build_nix || inputs.build_nix_arm64 }}
         with:
           path: dist
           merge-multiple: true
