@@ -14,11 +14,24 @@ rootfs=$(mktemp -d)
 tarball=
 
 cleanup() {
+    status=$?
+    trap - EXIT
     for target in work dev sys proc; do
-        sudo umount -R "$rootfs/$target" 2>/dev/null || true
+        if mountpoint -q "$rootfs/$target"; then
+            sudo umount -R "$rootfs/$target" 2>/dev/null ||
+                sudo umount -Rl "$rootfs/$target" 2>/dev/null || true
+        fi
     done
-    sudo rm -rf "$rootfs"
-    [ -n "$tarball" ] && rm -f "$tarball"
+    if mountpoint -q "$rootfs"; then
+        sudo umount -l "$rootfs" 2>/dev/null || true
+    fi
+    if ! mount | grep -Fq " $rootfs"; then
+        sudo rm -rf --one-file-system "$rootfs"
+    else
+        echo "left the chroot mounts under $rootfs" >&2
+    fi
+    rm -f "$tarball" 2>/dev/null || true
+    exit "$status"
 }
 trap cleanup EXIT
 
@@ -61,6 +74,7 @@ esac
 sudo rm -f "$rootfs/etc/resolv.conf"
 sudo cp /etc/resolv.conf "$rootfs/etc/resolv.conf"
 sudo mkdir -p "$rootfs/proc" "$rootfs/sys" "$rootfs/dev" "$rootfs/work"
+sudo mount --bind "$rootfs" "$rootfs"
 sudo mount -t proc proc "$rootfs/proc"
 sudo mount --rbind /sys "$rootfs/sys"
 sudo mount --make-rslave "$rootfs/sys"

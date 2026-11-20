@@ -235,7 +235,7 @@ jobs:
   arch_aarch64:
     name: Arch package (aarch64)
     needs: validate
-    if: ${{ inputs.build_arch && inputs.build_arch_arm64 }}
+    if: ${{ inputs.build_arch_arm64 }}
     runs-on: ubuntu-24.04-arm
     timeout-minutes: 90
     steps:
@@ -254,7 +254,7 @@ jobs:
           pacman-key --init
           pacman-key --populate archlinuxarm
           pacman --disable-sandbox -Syy --noconfirm
-          pacman --disable-sandbox -S --noconfirm --needed base-devel rust cargo gtk4 libadwaita libsecret glib2 pkgconf zstd git
+          pacman --disable-sandbox -S --noconfirm --needed base-devel rust gtk4 libadwaita libsecret glib2 pkgconf zstd git
           cd /work
           make dist VERSION="$PKG_VERSION"
           cp build-aux/PKGBUILD build/PKGBUILD
@@ -313,7 +313,7 @@ jobs:
   rpm_aarch64:
     name: Fedora RPM (aarch64)
     needs: validate
-    if: ${{ inputs.build_rpm && inputs.build_rpm_arm64 }}
+    if: ${{ inputs.build_rpm_arm64 }}
     runs-on: ubuntu-24.04-arm
     timeout-minutes: 90
     steps:
@@ -381,7 +381,7 @@ jobs:
   deb_aarch64:
     name: Debian package (aarch64)
     needs: validate
-    if: ${{ inputs.build_deb && inputs.build_deb_arm64 }}
+    if: ${{ inputs.build_deb_arm64 }}
     runs-on: ubuntu-24.04-arm
     timeout-minutes: 90
     steps:
