@@ -2,7 +2,7 @@
 %global debug_package %{nil}
 
 Name:           roseline
-Version:        0.1.4
+Version:        0.1.5
 Release:        1%{?dist}
 Summary:        Run Roblox with Rosemary on Linux
 
@@ -50,6 +50,8 @@ install -Dm644 "NOTICE" "%{buildroot}%{_licensedir}/roseline/NOTICE"
 %license %{_licensedir}/roseline/NOTICE
 
 %changelog
+* Fri Nov 20 2026 buwryme <hello@buwryy.net> - 0.1.5-1
+- Faster ARM64 packaging, a stable Rosemary pin, and Vulkan loader paths
 * Fri Oct 30 2026 buwryme <hello@buwryy.net> - 0.1.3-1
 - Self-contained AppImage and a resilient launch flow
 * Wed Oct 28 2026 buwryme <hello@buwryy.net> - 0.1.2-1

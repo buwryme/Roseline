@@ -9,8 +9,8 @@
 <p align="center">
   <a href="https://github.com/buwryme/Roseline/blob/main/VERSION">
     <picture>
-      <source media="(prefers-color-scheme: dark)" srcset="https://shieldcn.dev/badge/version-v0.1.4.svg?variant=secondary&size=sm&mode=dark&logo=git&nocache=1">
-      <img alt="Version" src="https://shieldcn.dev/badge/version-v0.1.4.svg?variant=secondary&size=sm&mode=light&logo=git&nocache=1">
+      <source media="(prefers-color-scheme: dark)" srcset="https://shieldcn.dev/badge/version-v0.1.5.svg?variant=secondary&size=sm&mode=dark&logo=git&nocache=1">
+      <img alt="Version" src="https://shieldcn.dev/badge/version-v0.1.5.svg?variant=secondary&size=sm&mode=light&logo=git&nocache=1">
     </picture>
   </a>
   <a href="https://github.com/buwryme/Roseline/releases/latest">
