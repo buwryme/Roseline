@@ -294,17 +294,24 @@ fn ensure_at(paths: &Paths, progress: &Progress) -> Result<String> {
     }
 }
 
-/// the id of the cached latest tag when it is still installed, else the
-/// newest installed official.
+/// the cached latest tag when it is still installed, unless a newer official
+/// build is on disk; the newest installed otherwise.
 fn cached_id(paths: &Paths) -> Option<String> {
-    if let Some(tag) = cached_latest(paths) {
-        let id = id_for(&tag);
-        if paths.runners().join(&id).join("bin/rosemary").is_file() {
-            return Some(id);
+    let newest = installed_at(paths).into_iter().next();
+    let cached = cached_latest(paths)
+        .map(|tag| (id_for(&tag), tag))
+        .filter(|(id, _)| paths.runners().join(id).join("bin/rosemary").is_file());
+    match (cached, newest) {
+        (Some((cached_id, cached_tag)), Some((newest_id, newest_tag))) => {
+            if version_key(&newest_tag) > version_key(&cached_tag) {
+                Some(newest_id)
+            } else {
+                Some(cached_id)
+            }
         }
+        (Some((cached_id, _)), None) => Some(cached_id),
+        (None, newest) => newest.map(|(id, _)| id),
     }
-    let (id, _) = installed_at(paths).first()?.clone();
-    Some(id)
 }
 
 #[derive(serde::Serialize, serde::Deserialize)]
@@ -632,6 +639,20 @@ mod tests {
         std::fs::create_dir_all(newer.join("bin")).unwrap();
         std::fs::write(newer.join("bin/rosemary"), b"#!/bin/sh\n").unwrap();
         assert_eq!(cached_id(&paths), Some(id_for("v0.3.4")));
+        let _ = std::fs::remove_dir_all(_root);
+    }
+
+    #[test]
+    fn a_stale_cache_does_not_beat_a_newer_installed_runner() {
+        let (_root, paths) = temp_paths("stale-cache");
+        for tag in ["v0.2.1", "v0.4.0"] {
+            let dir = paths.runners().join(id_for(tag));
+            std::fs::create_dir_all(dir.join("bin")).unwrap();
+            std::fs::write(dir.join("bin/rosemary"), b"#!/bin/sh\n").unwrap();
+        }
+        remember_latest(&paths, "v0.2.1");
+
+        assert_eq!(cached_id(&paths), Some(id_for("v0.4.0")));
         let _ = std::fs::remove_dir_all(_root);
     }
 

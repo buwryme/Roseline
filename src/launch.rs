@@ -36,11 +36,13 @@ pub fn run(
     let paths = Paths::get();
     let mut settings = Settings::load();
 
-    let runner_id = crate::runner::ensure(progress)?;
-    // always follow the release that ensure() just checked: a downloaded
-    // runner must be the one the prefix actually uses.
-    if set_runner(&mut settings, &runner_id) {
-        settings.save()?;
+    if pinned_custom(&settings).is_none() {
+        let runner_id = crate::runner::ensure(progress)?;
+        // always follow the release that ensure() just checked: a downloaded
+        // runner must be the one the prefix actually uses.
+        if set_runner(&mut settings, &runner_id) {
+            settings.save()?;
+        }
     }
     // a missing muvm, or a VM someone else holds, stops the launch here
     // rather than after the client download.
@@ -178,14 +180,30 @@ fn spawn_toast_helper(log: &Path, game_pid: u32) {
 /// client and the overlay, with no game process.
 pub fn prepare(progress: &Progress, tag: Option<&str>) -> Result<()> {
     let mut settings = Settings::load();
-    let runner_id = match tag {
-        Some(tag) => crate::runner::ensure_tag(progress, tag)?,
-        None => crate::runner::ensure(progress)?,
+    let runner_id = match pinned_custom(&settings) {
+        Some(id) => id,
+        None => match tag {
+            Some(tag) => crate::runner::ensure_tag(progress, tag)?,
+            None => crate::runner::ensure(progress)?,
+        },
     };
     if set_runner(&mut settings, &runner_id) {
         settings.save()?;
     }
     prepare_bottle(progress, &settings)
+}
+
+/// the live custom runner the settings pin, if any.
+fn pinned_custom(settings: &Settings) -> Option<String> {
+    pinned_custom_at(&Paths::get(), settings)
+}
+
+fn pinned_custom_at(paths: &Paths, settings: &Settings) -> Option<String> {
+    let id = settings.runner.as_deref()?;
+    if !crate::runner::is_custom(id) {
+        return None;
+    }
+    paths.runner_by_id(id).map(|(id, _)| id)
 }
 
 /// pin the config to the runner that was just checked or installed.
@@ -589,6 +607,33 @@ mod tests {
 
         settings.runner = Some("custom-gone".to_string());
         assert!(!pinned_custom_holds(&settings, false));
+    }
+
+    #[test]
+    fn a_live_custom_pin_skips_the_official_check() {
+        let root = std::env::temp_dir().join(format!("roseline-custom-pin-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        let paths = Paths {
+            data: root.clone(),
+            config: root.clone(),
+            cache: root.clone(),
+        };
+        let mut settings = Settings::default();
+        settings.runner = Some("custom-mine".to_string());
+
+        assert_eq!(pinned_custom_at(&paths, &settings), None);
+
+        let bin = paths.runners().join("custom-mine/bin");
+        std::fs::create_dir_all(&bin).unwrap();
+        std::fs::write(bin.join("rosemary"), b"#!/bin/sh\n").unwrap();
+        assert_eq!(
+            pinned_custom_at(&paths, &settings).as_deref(),
+            Some("custom-mine")
+        );
+
+        settings.runner = Some("rosemary-v0.4.2-official".to_string());
+        assert_eq!(pinned_custom_at(&paths, &settings), None);
+        let _ = std::fs::remove_dir_all(&root);
     }
 
     #[test]
