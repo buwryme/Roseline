@@ -7,7 +7,42 @@
 <p align="center">Roblox bootstrapper that runs the macOS builds of Roblox on Linux through <a href="https://github.com/microlift/rosemary">Rosemary</a>.</p>
 
 <p align="center">
-  <a href="https://git.buwryy.net/buwryy/Roseline">source</a> · <a href="https://git.buwryy.net/buwryy/Roseline/releases">releases</a> · <a href="https://discord.gg/HrUrzXAxPV">discord</a>
+  <a href="https://git.buwryy.net/buwryy/Roseline/src/branch/main/VERSION">
+    <picture>
+      <source media="(prefers-color-scheme: dark)" srcset="https://shieldcn.dev/badge/version-v0.1.5.svg?variant=secondary&size=sm&mode=dark&logo=git&nocache=1">
+      <img alt="Version" src="https://shieldcn.dev/badge/version-v0.1.5.svg?variant=secondary&size=sm&mode=light&logo=git&nocache=1">
+    </picture>
+  </a>
+  <a href="https://git.buwryy.net/buwryy/Roseline/releases">
+    <picture>
+      <source media="(prefers-color-scheme: dark)" srcset="https://shieldcn.dev/github/release/buwryme/Roseline.svg?variant=secondary&size=sm&mode=dark&nocache=1">
+      <img alt="Release" src="https://shieldcn.dev/github/release/buwryme/Roseline.svg?variant=secondary&size=sm&mode=light&nocache=1">
+    </picture>
+  </a>
+  <a href="https://git.buwryy.net/buwryy/Roseline/src/branch/main/LICENSE">
+    <picture>
+      <source media="(prefers-color-scheme: dark)" srcset="https://shieldcn.dev/badge/license-GPL--3.0--or--later.svg?variant=secondary&size=sm&mode=dark&logo=lu:scale&nocache=1">
+      <img alt="License: GPL-3.0-or-later" src="https://shieldcn.dev/badge/license-GPL--3.0--or--later.svg?variant=secondary&size=sm&mode=light&logo=lu:scale&nocache=1">
+    </picture>
+  </a>
+  <a href="https://discord.gg/HrUrzXAxPV">
+    <picture>
+      <source media="(prefers-color-scheme: dark)" srcset="https://shieldcn.dev/discord/members/HrUrzXAxPV.svg?variant=secondary&size=sm&mode=dark&nocache=1">
+      <img alt="Discord Members" src="https://shieldcn.dev/discord/members/HrUrzXAxPV.svg?variant=secondary&size=sm&mode=light&nocache=1">
+    </picture>
+  </a>
+  <a href="https://github.com/buwryme/Roseline/actions/workflows/ci.yml">
+    <picture>
+      <source media="(prefers-color-scheme: dark)" srcset="https://shieldcn.dev/github/ci/buwryme/Roseline.svg?variant=secondary&size=sm&mode=dark&workflow=ci.yml&nocache=1">
+      <img alt="CI" src="https://shieldcn.dev/github/ci/buwryme/Roseline.svg?variant=secondary&size=sm&mode=light&workflow=ci.yml&nocache=1">
+    </picture>
+  </a>
+  <a href="https://github.com/buwryme/Roseline/stargazers">
+    <picture>
+      <source media="(prefers-color-scheme: dark)" srcset="https://shieldcn.dev/github/stars/buwryme/Roseline.svg?variant=secondary&size=sm&mode=dark&nocache=1">
+      <img alt="GitHub Stars" src="https://shieldcn.dev/github/stars/buwryme/Roseline.svg?variant=secondary&size=sm&mode=light&nocache=1">
+    </picture>
+  </a>
 </p>
 
 
