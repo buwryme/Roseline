@@ -8,7 +8,7 @@ pub const APP_ID: &str = "net.buwryy.Roseline";
 /// display name; ids, paths and user agents keep the plain spelling.
 pub const DISPLAY_NAME: &str = "Roséline";
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");
-pub const WEBSITE: &str = "https://github.com/buwryme/Roseline";
+pub const WEBSITE: &str = "https://git.buwryy.net/buwryy/Roseline";
 /// https page that hands a Discord join button to the browser.
 pub const JOIN_PAGE: &str = "https://buwryy.net/join-roseline-discord-rpc-handler.html";
 

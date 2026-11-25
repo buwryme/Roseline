@@ -45,7 +45,7 @@ rustPlatform.buildRustPackage {
 
   meta = {
     description = "Run Roblox with Rosemary on Linux";
-    homepage = "https://github.com/buwryme/Roseline";
+    homepage = "https://git.buwryy.net/buwryy/Roseline";
     license = lib.licenses.gpl3Plus;
     mainProgram = "roseline";
     platforms = [

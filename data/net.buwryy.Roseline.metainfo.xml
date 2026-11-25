@@ -15,7 +15,7 @@
     </p>
   </description>
   <launchable type="desktop-id">net.buwryy.Roseline.desktop</launchable>
-  <url type="homepage">https://github.com/buwryme/Roseline</url>
+  <url type="homepage">https://git.buwryy.net/buwryy/Roseline</url>
   <developer id="net.buwryy">
     <name>buwryme</name>
   </developer>

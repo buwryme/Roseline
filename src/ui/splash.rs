@@ -758,7 +758,7 @@ fn early_exit_dialog() {
     let dialog = adw::AlertDialog::builder()
         .heading("Roblox crashed!")
         .body_use_markup(true)
-        .body("Something went wrong while opening Roblox. You can <a href=\"https://github.com/buwryme/Roseline/issues\">open an issue</a>.")
+        .body("Something went wrong while opening Roblox. You can <a href=\"https://git.buwryy.net/buwryy/Roseline/issues\">open an issue</a>.")
         .build();
     dialog.add_response("logs", "View Logs");
     dialog.set_response_appearance("logs", adw::ResponseAppearance::Suggested);

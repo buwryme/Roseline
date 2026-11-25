@@ -7,42 +7,7 @@
 <p align="center">Roblox bootstrapper that runs the macOS builds of Roblox on Linux through <a href="https://github.com/microlift/rosemary">Rosemary</a>.</p>
 
 <p align="center">
-  <a href="https://github.com/buwryme/Roseline/blob/main/VERSION">
-    <picture>
-      <source media="(prefers-color-scheme: dark)" srcset="https://shieldcn.dev/badge/version-v0.1.5.svg?variant=secondary&size=sm&mode=dark&logo=git&nocache=1">
-      <img alt="Version" src="https://shieldcn.dev/badge/version-v0.1.5.svg?variant=secondary&size=sm&mode=light&logo=git&nocache=1">
-    </picture>
-  </a>
-  <a href="https://github.com/buwryme/Roseline/releases/latest">
-    <picture>
-      <source media="(prefers-color-scheme: dark)" srcset="https://shieldcn.dev/github/release/buwryme/Roseline.svg?variant=secondary&size=sm&mode=dark&nocache=1">
-      <img alt="Release" src="https://shieldcn.dev/github/release/buwryme/Roseline.svg?variant=secondary&size=sm&mode=light&nocache=1">
-    </picture>
-  </a>
-  <a href="https://github.com/buwryme/Roseline#License">
-    <picture>
-      <source media="(prefers-color-scheme: dark)" srcset="https://shieldcn.dev/badge/license-GPL--3.0--or--later.svg?variant=secondary&size=sm&mode=dark&logo=lu:scale&nocache=1">
-      <img alt="License: GPL-3.0-or-later" src="https://shieldcn.dev/badge/license-GPL--3.0--or--later.svg?variant=secondary&size=sm&mode=light&logo=lu:scale&nocache=1">
-    </picture>
-  </a>
-  <a href="https://discord.gg/HrUrzXAxPV">
-    <picture>
-      <source media="(prefers-color-scheme: dark)" srcset="https://shieldcn.dev/discord/members/HrUrzXAxPV.svg?variant=secondary&size=sm&mode=dark&nocache=1">
-      <img alt="Discord Members" src="https://shieldcn.dev/discord/members/HrUrzXAxPV.svg?variant=secondary&size=sm&mode=light&nocache=1">
-    </picture>
-  </a>
-  <a href="https://github.com/buwryme/Roseline/actions/workflows/ci.yml">
-    <picture>
-      <source media="(prefers-color-scheme: dark)" srcset="https://shieldcn.dev/github/ci/buwryme/Roseline.svg?variant=secondary&size=sm&mode=dark&workflow=ci.yml&nocache=1">
-      <img alt="CI" src="https://shieldcn.dev/github/ci/buwryme/Roseline.svg?variant=secondary&size=sm&mode=light&workflow=ci.yml&nocache=1">
-    </picture>
-  </a>
-  <a href="https://github.com/buwryme/Roseline/stargazers">
-    <picture>
-      <source media="(prefers-color-scheme: dark)" srcset="https://shieldcn.dev/github/stars/buwryme/Roseline.svg?variant=secondary&size=sm&mode=dark&nocache=1">
-      <img alt="GitHub Stars" src="https://shieldcn.dev/github/stars/buwryme/Roseline.svg?variant=secondary&size=sm&mode=light&nocache=1">
-    </picture>
-  </a>
+  <a href="https://git.buwryy.net/buwryy/Roseline">source</a> · <a href="https://git.buwryy.net/buwryy/Roseline/releases">releases</a> · <a href="https://discord.gg/HrUrzXAxPV">discord</a>
 </p>
 
 
@@ -65,20 +30,20 @@ Roséline is a Linux-first Roblox bootstrapper that runs the macOS clients of Ro
 ## Install
 
 ```sh
-curl -fsSL https://buwryy.net/api/roseline/setup-script | bash
+curl -fsSL https://roseline.buwryy.net/setup | bash
 ```
 
 ... or non-interactively:
 
 ```sh
-curl -fsSL https://buwryy.net/api/roseline/setup-script | bash -s -- --system --version v0.1.3 --yes
-curl -fsSL https://buwryy.net/api/roseline/setup-script | bash -s -- --flatpak --latest --yes
+curl -fsSL https://roseline.buwryy.net/setup | bash -s -- --system --version v0.1.3 --yes
+curl -fsSL https://roseline.buwryy.net/setup | bash -s -- --flatpak --latest --yes
 ```
 
 ### Or, build manually:
 
 ```sh
-git clone https://github.com/buwryme/Roseline
+git clone https://git.buwryy.net/buwryy/Roseline
 cd Roseline
 cargo build --release
 ```
@@ -158,6 +123,6 @@ Licensed GPL-3.0-or-later, with additional terms:
 - Never misrepresent a derivative as the original
 - Zero warranty
 
-<p align="center">made with ♡ by <a href="https://github.com/buwryme">buwryme</a>. join the <a href="https://discord.gg/HrUrzXAxPV">discord server!</a></p>
+<p align="center">made with ♡ by <a href="https://git.buwryy.net/buwryy">buwryy</a>. join the <a href="https://discord.gg/HrUrzXAxPV">discord server!</a></p>
 
 <p align="center">for inquiries, contact hello@buwryy.net</p>

@@ -29,7 +29,7 @@ Installed-Size: ${installed_size}
 Depends: libgtk-4-1, libadwaita-1-0, libsecret-1-0
 Section: games
 Priority: optional
-Homepage: https://github.com/buwryme/Roseline
+Homepage: https://git.buwryy.net/buwryy/Roseline
 Description: Run Roblox with Rosemary on Linux
  Roséline is a small GTK4/Libadwaita app written in Rust that runs the macOS Roblox clients via Rosemary. 
 EOF

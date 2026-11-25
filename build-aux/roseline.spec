@@ -7,7 +7,7 @@ Release:        1%{?dist}
 Summary:        Run Roblox with Rosemary on Linux
 
 License:        GPL-3.0-or-later
-URL:            https://github.com/buwryme/Roseline
+URL:            https://git.buwryy.net/buwryy/Roseline
 Source0:        %{name}-%{version}.tar.gz
 
 BuildRequires:  cargo
