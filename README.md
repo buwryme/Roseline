@@ -9,14 +9,14 @@
 <p align="center">
   <a href="https://git.buwryy.net/buwryy/Roseline/src/branch/main/VERSION">
     <picture>
-      <source media="(prefers-color-scheme: dark)" srcset="https://shieldcn.dev/badge/version-v0.1.5.svg?variant=secondary&size=sm&mode=dark&logo=git&nocache=1">
-      <img alt="Version" src="https://shieldcn.dev/badge/version-v0.1.5.svg?variant=secondary&size=sm&mode=light&logo=git&nocache=1">
+      <source media="(prefers-color-scheme: dark)" srcset="https://badge.buwryy.net/roseline/version.svg?mode=dark">
+      <img alt="Version" src="https://badge.buwryy.net/roseline/version.svg?mode=light">
     </picture>
   </a>
   <a href="https://git.buwryy.net/buwryy/Roseline/releases">
     <picture>
-      <source media="(prefers-color-scheme: dark)" srcset="https://shieldcn.dev/github/release/buwryme/Roseline.svg?variant=secondary&size=sm&mode=dark&nocache=1">
-      <img alt="Release" src="https://shieldcn.dev/github/release/buwryme/Roseline.svg?variant=secondary&size=sm&mode=light&nocache=1">
+      <source media="(prefers-color-scheme: dark)" srcset="https://badge.buwryy.net/roseline/release.svg?mode=dark">
+      <img alt="Release" src="https://badge.buwryy.net/roseline/release.svg?mode=light">
     </picture>
   </a>
   <a href="https://git.buwryy.net/buwryy/Roseline/src/branch/main/LICENSE">
@@ -33,8 +33,8 @@
   </a>
   <a href="https://github.com/buwryme/Roseline/actions/workflows/ci.yml">
     <picture>
-      <source media="(prefers-color-scheme: dark)" srcset="https://shieldcn.dev/github/ci/buwryme/Roseline.svg?variant=secondary&size=sm&mode=dark&workflow=ci.yml&nocache=1">
-      <img alt="CI" src="https://shieldcn.dev/github/ci/buwryme/Roseline.svg?variant=secondary&size=sm&mode=light&workflow=ci.yml&nocache=1">
+      <source media="(prefers-color-scheme: dark)" srcset="https://badge.buwryy.net/roseline/ci.svg?mode=dark">
+      <img alt="CI" src="https://badge.buwryy.net/roseline/ci.svg?mode=light">
     </picture>
   </a>
   <a href="https://github.com/buwryme/Roseline/stargazers">
